@@ -130,7 +130,7 @@ const StoryGenerator = () => {
     }
   };
 
-  const handleKeyPress = (e:) => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       generateStory();
     }
@@ -157,7 +157,7 @@ const StoryGenerator = () => {
     "In the year 2157, humanity's first time traveler returned with urgent news:",
     "The ancient book glowed softly as Maya opened it for the first time:",
   ];
-
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white">
       {/* Header */}
