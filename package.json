@@ -3,15 +3,20 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
-      "dev": "npm run dev:frontend",
-      "dev:frontend": "cd frontend && npm run dev",
-      "dev:backend": "cd backend && python main.py",
-      "build": "npm run build:frontend",
-      "build:frontend": "cd frontend && npm run build",
-      "install:all": "npm install --prefix frontend && pip install -r backend/requirements.txt",
-      "clean": "rm -rf frontend/dist frontend/node_modules"
+        "dev": "npm run dev:frontend",
+        "dev:frontend": "cd frontend && npm run dev",
+        "dev:backend": "cd backend && python main.py",
+        "build": "npm run build:frontend",
+        "build:frontend": "cd frontend && npm run build",
+        "install:all": "npm install --prefix frontend && pip install -r backend/requirements.txt",
+        "clean": "rm -rf frontend/dist frontend/node_modules"
     },
     "devDependencies": {
-      "concurrently": "^8.2.0"
+        "@types/react": "^19.1.8",
+        "@types/react-dom": "^19.1.6",
+        "concurrently": "^8.2.0"
+    },
+    "dependencies": {
+        "lucide-react": "^0.525.0"
     }
-  }
+}
