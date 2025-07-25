@@ -1,20 +1,28 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader, BookOpen, Sparkles, Settings, Download } from 'lucide-react';
+import React, { useState, useRef, useEffect } from "react";
+import {
+  Send,
+  Loader,
+  BookOpen,
+  Sparkles,
+  Settings,
+  Download,
+} from "lucide-react";
 
 const StoryGenerator = () => {
-  const [prompt, setPrompt] = useState('');
-  const [story, setStory] = useState('');
+  const [prompt, setPrompt] = useState("");
+  const [story, setStory] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [settings, setSettings] = useState({
     maxTokens: 200,
     temperature: 0.7,
-    streamResponse: true
+    streamResponse: true,
   });
-  const [showSettings, setShowSettings] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState('disconnected');
-  
-  const storyRef = useRef(null);
-  const wsRef = useRef(null);
+
+  const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [connectionStatus, setConnectionStatus] = useState("Disconnected");
+
+  const storyRef = useRef<HTMLDivElement | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   // WebSocket connection for streaming
   useEffect(() => {
@@ -29,39 +37,39 @@ const StoryGenerator = () => {
   const connectWebSocket = () => {
     try {
       // In production, replace with your backend URL
-      const wsUrl = 'ws://localhost:8000/ws';
+      const wsUrl = "ws://localhost:8000/ws";
       wsRef.current = new WebSocket(wsUrl);
-      
+
       wsRef.current.onopen = () => {
-        setConnectionStatus('connected');
-        console.log('WebSocket connected');
+        setConnectionStatus("connected");
+        console.log("WebSocket connected");
       };
-      
+
       wsRef.current.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        
-        if (data.type === 'token') {
-          setStory(prev => prev + data.content);
-        } else if (data.type === 'complete') {
+
+        if (data.type === "token") {
+          setStory((prev) => prev + data.content);
+        } else if (data.type === "complete") {
           setIsGenerating(false);
-        } else if (data.type === 'error') {
-          console.error('Generation error:', data.content);
+        } else if (data.type === "error") {
+          console.error("Generation error:", data.content);
           setIsGenerating(false);
         }
       };
-      
+
       wsRef.current.onclose = () => {
-        setConnectionStatus('disconnected');
+        setConnectionStatus("Disconnected");
         setTimeout(connectWebSocket, 3000); // Auto-reconnect
       };
-      
+
       wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setConnectionStatus('error');
+        console.error("WebSocket error:", error);
+        setConnectionStatus("error");
       };
     } catch (error) {
-      console.error('Failed to connect WebSocket:', error);
-      setConnectionStatus('error');
+      console.error("Failed to connect WebSocket:", error);
+      setConnectionStatus("error");
     }
   };
 
@@ -74,60 +82,67 @@ const StoryGenerator = () => {
 
   const generateStory = async () => {
     if (!prompt.trim() || isGenerating) return;
-    
+
     setIsGenerating(true);
-    setStory('');
-    
-    if (settings.streamResponse && wsRef.current?.readyState === WebSocket.OPEN) {
+    setStory("");
+
+    if (
+      settings.streamResponse &&
+      wsRef.current?.readyState === WebSocket.OPEN
+    ) {
       // Use WebSocket for streaming
       const request = {
-        type: 'generate',
+        type: "generate",
         prompt: prompt.trim(),
         max_tokens: settings.maxTokens,
-        temperature: settings.temperature
+        temperature: settings.temperature,
       };
       wsRef.current.send(JSON.stringify(request));
     } else {
       // Fallback to HTTP API
       try {
-        const response = await fetch('http://localhost:8000/generate', {
-          method: 'POST',
+        const response = await fetch("http://localhost:8000/generate", {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             prompt: prompt.trim(),
             max_tokens: settings.maxTokens,
-            temperature: settings.temperature
-          })
+            temperature: settings.temperature,
+          }),
         });
-        
+
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const data = await response.json();
         setStory(data.generated_text);
       } catch (error) {
-        console.error('Generation failed:', error);
-        setStory('Error: Failed to generate story. Please check your connection.');
+        console.error("Generation failed:", error);
+        setStory(
+          "Error: Failed to generate story. Please check your connection."
+        );
       } finally {
         setIsGenerating(false);
       }
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+  const handleKeyPress = (e:) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       generateStory();
     }
   };
 
   const downloadStory = () => {
     if (!story) return;
-    
-    const element = document.createElement('a');
-    const file = new Blob([`Prompt: ${prompt}\n\n${story}`], {type: 'text/plain'});
+
+    const element = document.createElement("a");
+    const file = new Blob([`Prompt: ${prompt}\n\n${story}`], {
+      type: "text/plain",
+    });
     element.href = URL.createObjectURL(file);
     element.download = `story_${Date.now()}.txt`;
     document.body.appendChild(element);
@@ -140,7 +155,7 @@ const StoryGenerator = () => {
     "The old lighthouse keeper discovered something unusual in the fog that night:",
     "Detective Sarah Chen had seen many strange cases, but this one was different:",
     "In the year 2157, humanity's first time traveler returned with urgent news:",
-    "The ancient book glowed softly as Maya opened it for the first time:"
+    "The ancient book glowed softly as Maya opened it for the first time:",
   ];
 
   return (
@@ -154,20 +169,29 @@ const StoryGenerator = () => {
               AI Story Generator
             </h1>
           </div>
-          
+
           <div className="flex items-center space-x-4">
-            <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
-              connectionStatus === 'connected' ? 'bg-green-500/20 text-green-400' :
-              connectionStatus === 'error' ? 'bg-red-500/20 text-red-400' :
-              'bg-yellow-500/20 text-yellow-400'
-            }`}>
-              <div className={`w-2 h-2 rounded-full ${
-                connectionStatus === 'connected' ? 'bg-green-400' :
-                connectionStatus === 'error' ? 'bg-red-400' : 'bg-yellow-400'
-              }`} />
+            <div
+              className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
+                connectionStatus === "connected"
+                  ? "bg-green-500/20 text-green-400"
+                  : connectionStatus === "error"
+                  ? "bg-red-500/20 text-red-400"
+                  : "bg-yellow-500/20 text-yellow-400"
+              }`}
+            >
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  connectionStatus === "connected"
+                    ? "bg-green-400"
+                    : connectionStatus === "error"
+                    ? "bg-red-400"
+                    : "bg-yellow-400"
+                }`}
+              />
               {connectionStatus}
             </div>
-            
+
             <button
               onClick={() => setShowSettings(!showSettings)}
               className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
@@ -183,25 +207,39 @@ const StoryGenerator = () => {
             <h3 className="text-lg font-semibold mb-4">Generation Settings</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-2">Max Tokens</label>
+                <label className="block text-sm font-medium mb-2">
+                  Max Tokens
+                </label>
                 <input
                   type="number"
                   min="50"
                   max="500"
                   value={settings.maxTokens}
-                  onChange={(e) => setSettings(prev => ({...prev, maxTokens: parseInt(e.target.value)}))}
+                  onChange={(e) =>
+                    setSettings((prev) => ({
+                      ...prev,
+                      maxTokens: parseInt(e.target.value),
+                    }))
+                  }
                   className="w-full p-3 bg-white/10 rounded-lg border border-white/20 focus:border-purple-400 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Temperature ({settings.temperature})</label>
+                <label className="block text-sm font-medium mb-2">
+                  Temperature ({settings.temperature})
+                </label>
                 <input
                   type="range"
                   min="0"
                   max="1"
                   step="0.1"
                   value={settings.temperature}
-                  onChange={(e) => setSettings(prev => ({...prev, temperature: parseFloat(e.target.value)}))}
+                  onChange={(e) =>
+                    setSettings((prev) => ({
+                      ...prev,
+                      temperature: parseFloat(e.target.value),
+                    }))
+                  }
                   className="w-full"
                 />
               </div>
@@ -210,7 +248,12 @@ const StoryGenerator = () => {
                   <input
                     type="checkbox"
                     checked={settings.streamResponse}
-                    onChange={(e) => setSettings(prev => ({...prev, streamResponse: e.target.checked}))}
+                    onChange={(e) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        streamResponse: e.target.checked,
+                      }))
+                    }
                     className="rounded"
                   />
                   <span className="text-sm font-medium">Stream Response</span>
@@ -229,7 +272,7 @@ const StoryGenerator = () => {
                 <Sparkles className="h-5 w-5 text-purple-400" />
                 <span>Story Prompt</span>
               </h2>
-              
+
               <div className="relative">
                 <textarea
                   value={prompt}
@@ -238,7 +281,7 @@ const StoryGenerator = () => {
                   placeholder="Enter your story prompt here... (Ctrl/Cmd + Enter to generate)"
                   className="w-full h-32 p-4 bg-white/10 rounded-xl border border-white/20 focus:border-purple-400 focus:outline-none resize-none backdrop-blur-sm"
                 />
-                
+
                 <button
                   onClick={generateStory}
                   disabled={!prompt.trim() || isGenerating}
@@ -277,7 +320,7 @@ const StoryGenerator = () => {
                 <BookOpen className="h-5 w-5 text-purple-400" />
                 <span>Generated Story</span>
               </h2>
-              
+
               {story && (
                 <button
                   onClick={downloadStory}
@@ -288,7 +331,7 @@ const StoryGenerator = () => {
                 </button>
               )}
             </div>
-            
+
             <div
               ref={storyRef}
               className="h-96 p-4 bg-white/10 rounded-xl border border-white/20 overflow-y-auto backdrop-blur-sm"
@@ -304,7 +347,9 @@ const StoryGenerator = () => {
                 <div className="text-gray-400 text-center mt-8">
                   <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>Your generated story will appear here...</p>
-                  <p className="text-sm mt-2">Enter a prompt and click generate to start!</p>
+                  <p className="text-sm mt-2">
+                    Enter a prompt and click generate to start!
+                  </p>
                 </div>
               )}
             </div>
@@ -314,9 +359,8 @@ const StoryGenerator = () => {
         {/* Footer */}
         <div className="mt-12 text-center text-gray-400">
           <p className="text-sm">
-            Powered by your optimized Transformer model • 
-            Built with React + FastAPI • 
-            Real-time streaming enabled
+            Powered by your optimized Transformer model • Built with React +
+            FastAPI • Real-time streaming enabled
           </p>
         </div>
       </div>
