@@ -6,6 +6,6 @@ import StoryGenerator from './StoryGenerator'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <StoryGenerator />
+    <App />
   </React.StrictMode>,
 )
