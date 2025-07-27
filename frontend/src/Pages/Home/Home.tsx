@@ -5,7 +5,7 @@ import PromptInput from "./Components/PromptInput";
 import ExamplePrompts from "./Components/ExamplePrompts";
 import StoryOutput from "./Components/StoryOutput";
 import Footer from "./Components/Footer";
-import useWebSocket from "./Hooks/useWebSocket";
+import useSocketIo from "./Hooks/useSocketIO";
 import type { GenerationSettings } from "./Common/types";
 
 const HomePage = () => {
@@ -20,9 +20,10 @@ const HomePage = () => {
   });
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
-  // Refs and hooks
   const storyRef = useRef<HTMLDivElement>(null);
-  const { connectionStatus, wsRef } = useWebSocket();
+
+  // Using custon socketIO hook for websocket connection communication
+  const { connectionStatus, socketRef, emit, isConnected } = useSocketIo();
 
   // Auto-scroll to bottom of story
   useEffect(() => {
@@ -33,8 +34,9 @@ const HomePage = () => {
 
   // WebSocket message handling
   useEffect(() => {
-    if (wsRef.current) {
-      wsRef.current.onmessage = (event: MessageEvent) => {
+    if (socketRef.current) {
+      // Listen for incoming messages from the server
+      socketRef.current.on = (event: MessageEvent) => {
         const data = JSON.parse(event.data);
 
         if (data.type === "token") {
@@ -47,7 +49,7 @@ const HomePage = () => {
         }
       };
     }
-  }, [wsRef.current]);
+  }, [socketRef.current]);
 
   // Event handlers
   const handleGenerateStory = async (): Promise<void> => {
