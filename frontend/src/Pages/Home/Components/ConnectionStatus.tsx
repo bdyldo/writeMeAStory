@@ -8,18 +8,18 @@ interface ConnectionStatusProps {
 const ConnectionStatusIndicator = ({ status }: ConnectionStatusProps) => (
     <div
       className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
-        status === "connected"
+        status === "Connected"
           ? "bg-green-500/20 text-green-400"
-          : status === "error"
+          : status === "Error"
           ? "bg-red-500/20 text-red-400"
           : "bg-yellow-500/20 text-yellow-400"
       }`}
     >
       <div
         className={`w-2 h-2 rounded-full ${
-          status === "connected"
+          status === "Connected"
             ? "bg-green-400"
-            : status === "error"
+            : status === "Error"
             ? "bg-red-400"
             : "bg-yellow-400"
         }`}

@@ -13,6 +13,7 @@ interface UseSocketIOReturn {
   isConnected: boolean;
 }
 
+// 
 const useSocketIO = (
   serverUrl: string = "http://localhost:8000"
 ): UseSocketIOReturn => {
@@ -28,11 +29,11 @@ const useSocketIO = (
   > | null>(null);
 
   // Function to connect to the Socket.IO server
+  // ! This function is called when the hook is initialized
   const connectSocket = (): void => {
     try {
       // Create socket connection with options
       socketRef.current = io(serverUrl, {
-        // 🔧 IMPORTANT CONFIGURATION OPTIONS
         autoConnect: true, // Auto-connect on creation
         reconnection: true, // Enable auto-reconnection
         reconnectionDelay: 1000, // Wait 1s before reconnecting
@@ -42,10 +43,10 @@ const useSocketIO = (
         transports: ["websocket", "polling"], // Fallback transports
       });
 
-      // ✅ CONNECTION EVENTS
+      // ✅ CONNECTION EVENTS, emitted by server
       socketRef.current.on("connect", () => {
         console.log("🟢 Socket.IO connected:", socketRef.current?.id);
-        setConnectionStatus("connected");
+        setConnectionStatus("Connected");
         setIsConnected(true);
       });
 
@@ -64,29 +65,29 @@ const useSocketIO = (
       // ❌ ERROR HANDLING
       socketRef.current.on("connect_error", (error) => {
         console.error("💥 Socket.IO connection error:", error.message);
-        setConnectionStatus("error");
+        setConnectionStatus("Error");
         setIsConnected(false);
       });
 
       // 🔄 RECONNECTION EVENTS
       socketRef.current.on("reconnect", (attemptNumber: number) => {
         console.log(`🔄 Reconnected after ${attemptNumber} attempts`);
-        setConnectionStatus("connected");
+        setConnectionStatus("Connected");
         setIsConnected(true);
       });
 
       socketRef.current.on("reconnect_error", (error: any) => {
         console.error("🔄❌ Reconnection failed:", error);
-        setConnectionStatus("error");
+        setConnectionStatus("Error");
       });
 
       socketRef.current.on("reconnect_failed", () => {
         console.error("🔄💀 Reconnection failed permanently");
-        setConnectionStatus("error");
+        setConnectionStatus("Error");
       });
     } catch (error) {
       console.error("Failed to create Socket.IO connection:", error);
-      setConnectionStatus("error");
+      setConnectionStatus("Error");
     }
   };
 
