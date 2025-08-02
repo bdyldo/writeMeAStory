@@ -19,11 +19,15 @@ const useSocketIO = (
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("Disconnected");
   const [isConnected, setIsConnected] = useState(false);
+
+  // First param: receiving data interface
+  // Second param: sending data interface
   const socketRef = useRef<Socket<
     ServerToClientEvents,
     ClientToServerEvents
   > | null>(null);
 
+  // Function to connect to the Socket.IO server
   const connectSocket = (): void => {
     try {
       // Create socket connection with options
@@ -120,78 +124,3 @@ const useSocketIO = (
 };
 
 export default useSocketIO;
-
-/*
- * 🚨 IMPORTANT PRECAUTIONS:
- *
- * 1. MEMORY LEAKS:
- *    - Always call removeAllListeners() in cleanup
- *    - Don't add listeners in render loops
- *
- * 2. EVENT LISTENER MANAGEMENT:
- *    - Add listeners in useEffect
- *    - Remove them in cleanup function
- *    - Use socket.off() for specific events if needed
- *
- * 3. CONNECTION STATE:
- *    - Always check socket.connected before emitting
- *    - Handle all connection states (connected, disconnected, error)
- *
- * 4. RECONNECTION:
- *    - Socket.IO handles this automatically
- *    - But set reasonable limits (maxReconnectionAttempts)
- *
- * 5. ERROR HANDLING:
- *    - Listen for connect_error, reconnect_error
- *    - Show user-friendly error messages
- *
- * 6. COMPONENT UPDATES:
- *    - Don't create new socket instances on re-renders
- *    - Use refs to maintain socket instance
- *
- * 7. TYPESCRIPT:
- *    - Define event interfaces for type safety
- *    - Use typed emit and on methods
- */
-
-// USAGE EXAMPLE:
-/*
-  const MyComponent = () => {
-    const { connectionStatus, socketRef, emit, isConnected } = useSocketIO();
-  
-    useEffect(() => {
-      if (socketRef.current) {
-        // ✅ Add event listeners
-        socketRef.current.on('story_token', (data) => {
-          setStory(prev => prev + data.content);
-        });
-  
-        socketRef.current.on('story_complete', () => {
-          setIsGenerating(false);
-        });
-  
-        socketRef.current.on('story_error', (data) => {
-          console.error('Story generation error:', data.message);
-          setIsGenerating(false);
-        });
-  
-        // 🧹 Cleanup specific listeners
-        return () => {
-          socketRef.current?.off('story_token');
-          socketRef.current?.off('story_complete');
-          socketRef.current?.off('story_error');
-        };
-      }
-    }, [socketRef.current]);
-  
-    const generateStory = () => {
-      if (isConnected) {
-        emit('generate_story', {
-          prompt: prompt.trim(),
-          max_tokens: settings.maxTokens,
-          temperature: settings.temperature,
-        });
-      }
-    };
-  };
-  */

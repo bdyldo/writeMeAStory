@@ -3,6 +3,9 @@ export interface ServerToClientEvents {
   story_token: (data: { content: string }) => void;
   story_complete: () => void;
   story_error: (data: { message: string }) => void;
+  reconnect: (attemptNumber: number) => void;
+  reconnect_error: (error: Error) => void;
+  reconnect_failed: () => void;
 }
 
 export interface ClientToServerEvents {
