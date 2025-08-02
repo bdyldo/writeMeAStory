@@ -5,11 +5,10 @@ import PromptInput from "./Components/PromptInput";
 import ExamplePrompts from "./Components/ExamplePrompts";
 import StoryOutput from "./Components/StoryOutput";
 import Footer from "./Components/Footer";
-import useWebSocket from "./Hooks/useWebSocket";
+import useSocketIo from "./Hooks/useSocketIO";
 import type { GenerationSettings } from "./Common/types";
 
 const HomePage = () => {
-  // State management
   const [prompt, setPrompt] = useState<string>("");
   const [story, setStory] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -20,9 +19,10 @@ const HomePage = () => {
   });
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
-  // Refs and hooks
   const storyRef = useRef<HTMLDivElement>(null);
-  const { connectionStatus, wsRef } = useWebSocket();
+
+  // Using custon socketIO hook for websocket connection communication
+  const { connectionStatus, socketRef, emit, isConnected } = useSocketIo();
 
   // Auto-scroll to bottom of story
   useEffect(() => {
@@ -33,23 +33,42 @@ const HomePage = () => {
 
   // WebSocket message handling
   useEffect(() => {
-    if (wsRef.current) {
-      wsRef.current.onmessage = (event: MessageEvent) => {
-        const data = JSON.parse(event.data);
+    if (socketRef.current) {
+      const handleStoryToken = (data: { content: string }) => {
+        setStory((prev) => prev + data.content);
+      };
 
-        if (data.type === "token") {
-          setStory((prev) => prev + data.content);
-        } else if (data.type === "complete") {
-          setIsGenerating(false);
-        } else if (data.type === "error") {
-          console.error("Generation error:", data.content);
-          setIsGenerating(false);
+      // Listen for story completion
+      const handleStoryComplete = () => {
+        setIsGenerating(false);
+        console.log("✅ Story generation completed");
+      };
+
+      // Listen for errors
+      const handleStoryError = (data: { message: string }) => {
+        console.error("Generation error:", data.message);
+        setStory("Error: " + data.message);
+        setIsGenerating(false);
+      };
+
+      // SocketIO event listeners from backend. Triggers second param functions when string from first param is emitted
+      socketRef.current.on("story_token", handleStoryToken);
+      socketRef.current.on("story_complete", handleStoryComplete);
+      socketRef.current.on("story_error", handleStoryError);
+
+      // 🧹 Cleanup: Remove specific listeners when component unmounts
+      return () => {
+        if (socketRef.current) {
+          socketRef.current.off("story_token", handleStoryToken);
+          socketRef.current.off("story_complete", handleStoryComplete);
+          socketRef.current.off("story_error", handleStoryError);
         }
       };
     }
-  }, [wsRef.current]);
+  }, [socketRef.current, isConnected]);
 
-  // Event handlers
+  // Function to handle story generation for PromptInput component
+  // ! This function is called when the user clicks the generate button or presses Ctrl/Cmd + Enter
   const handleGenerateStory = async (): Promise<void> => {
     if (!prompt.trim() || isGenerating) return;
 
@@ -58,18 +77,17 @@ const HomePage = () => {
 
     if (
       settings.streamResponse &&
-      wsRef.current?.readyState === WebSocket.OPEN
+      isConnected &&
+      socketRef.current
     ) {
       // WebSocket streaming
-      const request = {
-        type: "generate",
+      emit("generate_story", {
         prompt: prompt.trim(),
         max_tokens: settings.maxTokens,
         temperature: settings.temperature,
-      };
-      wsRef.current.send(JSON.stringify(request));
+      });
     } else {
-      // HTTP fallback
+      // HTTP fallback (backup, may delete)
       try {
         const response = await fetch("http://localhost:8000/generate", {
           method: "POST",
@@ -98,6 +116,8 @@ const HomePage = () => {
     }
   };
 
+  // Function to handle story download for StoryOutput component
+  // ! This function is called when the user clicks the download button
   const handleDownloadStory = (): void => {
     if (!story) return;
 
