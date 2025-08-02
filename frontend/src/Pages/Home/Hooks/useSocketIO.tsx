@@ -110,6 +110,7 @@ const useSocketIO = (
     };
   }, [serverUrl]);
 
+  // Return a state of connection status, socket reference using socketio, emit function, and connection state
   return {
     connectionStatus,
     socketRef,
