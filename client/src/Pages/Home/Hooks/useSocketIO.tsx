@@ -15,7 +15,7 @@ interface UseSocketIOReturn {
 
 // 
 const useSocketIO = (
-  serverUrl: string = "http://localhost:8000"
+  serverUrl: string = "http://localhost:5173"
 ): UseSocketIOReturn => {
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("Disconnected");
