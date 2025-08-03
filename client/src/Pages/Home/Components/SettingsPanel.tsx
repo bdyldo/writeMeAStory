@@ -1,5 +1,5 @@
 import React from "react";
-import { GenerationSettings } from "../Common/types";
+import { GenerationSettings } from "../../../../../common/frontend-types";
 
 // Settings Panel Component
 interface SettingsPanelProps {

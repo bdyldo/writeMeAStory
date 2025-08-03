@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import type { ConnectionStatus } from "../Common/types.ts";
+import type { ConnectionStatus } from "../../../../../common/frontend-types.ts";
 import { io, Socket } from "socket.io-client";
 import type {
   ServerToClientEvents,
   ClientToServerEvents,
-} from "../Common/socket.interface.ts";
+} from "../../../../../common/socket.interface.ts";
 
 interface UseSocketIOReturn {
   connectionStatus: ConnectionStatus;
@@ -13,7 +13,7 @@ interface UseSocketIOReturn {
   isConnected: boolean;
 }
 
-// 
+//
 const useSocketIO = (
   serverUrl: string = "http://localhost:5173"
 ): UseSocketIOReturn => {

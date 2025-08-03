@@ -4,5 +4,3 @@ dist/
 .DS_Store         
 *.log              
 .vite/         
-
-frontend/src/StoryGenerator.tsx

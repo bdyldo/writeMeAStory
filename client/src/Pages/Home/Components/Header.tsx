@@ -1,6 +1,6 @@
 import React from "react";
 import { BookOpen, Settings } from "lucide-react";
-import type { ConnectionStatus } from "../Common/types";
+import type { ConnectionStatus } from "../../../../../common/frontend-types";
 import ConnectionStatusIndicator from "./ConnectionStatus";
 
 // Header Component

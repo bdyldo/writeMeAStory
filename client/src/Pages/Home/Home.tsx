@@ -6,7 +6,7 @@ import ExamplePrompts from "./Components/ExamplePrompts";
 import StoryOutput from "./Components/StoryOutput";
 import Footer from "./Components/Footer";
 import useSocketIo from "./Hooks/useSocketIO";
-import type { GenerationSettings } from "./Common/types";
+import type { GenerationSettings } from "../../../../common/frontend-types";
 
 const HomePage = () => {
   const [prompt, setPrompt] = useState<string>("");
@@ -75,11 +75,7 @@ const HomePage = () => {
     setIsGenerating(true);
     setStory("");
 
-    if (
-      settings.streamResponse &&
-      isConnected &&
-      socketRef.current
-    ) {
+    if (settings.streamResponse && isConnected && socketRef.current) {
       // WebSocket streaming
       emit("generate_story", {
         prompt: prompt.trim(),
