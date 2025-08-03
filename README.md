@@ -81,7 +81,7 @@ poetry run uvicorn main:app --reload
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yourusername/writeMeAStory.git
+git clone https://github.com/bdyldo/writeMeAStory.git
 cd writeMeAStory
 ```
 
@@ -223,4 +223,5 @@ npm install
 # Check TypeScript errors
 npm run type-check
 ```
+
 
