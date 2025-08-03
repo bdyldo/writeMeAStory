@@ -24,11 +24,15 @@
 - **Custom Hooks** for WebSocket management
 
 ### Backend Stack
-- **FastAPI** with Python
-- **Python-Socket.IO Server** for WebSocket handling
-- **Poetry** for package managing
-- **Async/Await** for streaming text generation
-- **CORS enabled** for development
+
+- **FastAPI** – Lightweight, high-performance Python web framework for building APIs.
+- **Python-Socket.IO** – Enables real-time, bidirectional communication between client and server over WebSockets.
+- **PyTorch** – Used to build and run the custom Transformer model for story generation.
+- **Poetry** – Manages Python dependencies, environments, and project metadata.
+- **Gunicorn + UvicornWorker** – Production-ready ASGI server setup for handling FastAPI with async support.
+- **AsyncIO** – Powers non-blocking, token-level streaming during story generation.
+- **CORS enabled** – Allows secure cross-origin requests from the React frontend during development.
+
 
 ### Project Structure
 ```
@@ -223,5 +227,6 @@ npm install
 # Check TypeScript errors
 npm run type-check
 ```
+
 
 
