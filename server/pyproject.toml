@@ -10,7 +10,8 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi (>=0.116.1,<0.117.0)",
     "python-socketio (>=5.13.0,<6.0.0)",
-    "uvicorn (>=0.35.0,<0.36.0)"
+    "uvicorn (>=0.35.0,<0.36.0)",
+    "black (>=25.1.0,<26.0.0)"
 ]
 
 
