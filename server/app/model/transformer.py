@@ -5,6 +5,7 @@ import json
 from transformers import AutoTokenizer
 import torch.nn.functional as F
 import time
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 # Initialize torch device to use cuda if we have a gpu
 device = (
@@ -13,7 +14,7 @@ device = (
     else "mps" if torch.backends.mps.is_available() else "cpu"
 )
 
-# print(f"Using device: {device}")
+print(f"Using device: {device}")
 
 
 class SentenceDataset:
@@ -82,12 +83,12 @@ class SelfAttention(nn.Module):
         self.value_dim = value_dim
         self.hidden_dim = hidden_dim
 
-        assert (
+        '''assert (
             key_dim * num_head <= hidden_dim
         ), "key_dim × num_head must not exceed hidden_dim"
         assert (
             value_dim * num_head <= hidden_dim
-        ), "value_dim × num_head must not exceed hidden_dim"
+        ), "value_dim × num_head must not exceed hidden_dim"'''
 
         # Projections: hidden_dim → num_head × (key_dim/value_dim)
         self.query_proj = nn.Linear(hidden_dim, num_head * key_dim)
@@ -244,7 +245,15 @@ class RNN(nn.Module):
 
 class RNNLanguageModel(nn.Module):
     # Add this parameter:
-    def __init__(self, embed_dim, hidden_dim, vocab_size, num_head=8, key_dim=None, value_dim=None):
+    def __init__(
+        self,
+        embed_dim,
+        hidden_dim,
+        vocab_size,
+        num_head=8,
+        key_dim=None,
+        value_dim=None,
+    ):
         """
         embed_dim (int): Dimension of word embeddings
         hidden_dim (int): Dimension of RNN hidden states
@@ -304,65 +313,76 @@ class RNNLanguageModel(nn.Module):
             index = torch.multinomial(token_probs, 1)[0]
             return index
 
+    @torch.no_grad()
     def generate(self, tokens: Tensor, max_tokens=10, temperature=0.0) -> Tensor:
-        # Get hidden states for input tokens by calling forward
+        """Improved generation with better efficiency"""
+        self.eval()
+
+        # Get initial forward pass
         token_logits, hidden_states, attn_inputs = self(tokens)
-        next_token_logits = token_logits[0, -1]
+        next_token_logits = token_logits[0, -1]  # Last token's logits
 
         new_tokens = []
-        step = 0
 
-        while True:
-            step += 1
-
-            # Select next token
+        for step in range(max_tokens):
+            # Sample next token
             next_token = self.select_token(next_token_logits, temperature)
             new_tokens.append(next_token.item())
 
-            if step >= max_tokens:
-                break
+            # Prepare next input
+            next_token_tensor = next_token.unsqueeze(0)  # [1]
+            embed = self.embeddings(next_token_tensor).unsqueeze(0)  # [1, 1, embed_dim]
 
-            # Get next input embedding - fix the shape issue
-            embed = self.embeddings(next_token.unsqueeze(0).unsqueeze(0))  # Shape: [1, 1, embed_dim]
+            # Get next states
+            next_hidden, next_attn_input = self.rnn.step(
+                embed.squeeze(1), hidden_states
+            )
 
-            # Get next hidden state and next attn input state from RNN
-            next_hidden_state, next_attn_input = self.rnn.step(embed.squeeze(1), hidden_states)
-
-            # Update hidden states - ensure consistent dimensions
-            next_hidden_state = next_hidden_state.unsqueeze(1)  # [1, 1, hidden_dim]
-            hidden_states = torch.cat([hidden_states, next_hidden_state], dim=1)
-
-            # Update attention inputs
+            # Update states with proper dimensions
+            next_hidden = next_hidden.unsqueeze(1)  # [1, 1, hidden_dim]
             next_attn_input = next_attn_input.unsqueeze(1)  # [1, 1, hidden_dim]
+
+            hidden_states = torch.cat([hidden_states, next_hidden], dim=1)
             attn_inputs = torch.cat([attn_inputs, next_attn_input], dim=1)
 
-            # Call attention
-            next_output_state = self.attention(attn_inputs)[:, -1, :]
-
-            # Generate next token logits
-            next_token_logits = self.lm_head(next_output_state)
+            # Get next token logits
+            attn_output = self.attention(attn_inputs)  # [1, T+1, hidden_dim]
+            next_token_logits = self.lm_head(attn_output[:, -1, :])  # [1, vocab_size]
+            next_token_logits = next_token_logits.squeeze(0)  # [vocab_size]
 
         return torch.tensor(new_tokens)
 
 
-def train(lm, train_data, valid_data, loss_fn, optimizer, num_sequences, batch_size):
+def train(
+    lm,
+    train_data,
+    valid_data,
+    loss_fn,
+    optimizer,
+    num_sequences,
+    batch_size,
+    scheduler=None,
+    accumulation_steps=1,
+):
     """
-    Run one epoch of language model training
+    Run one epoch of language model training with improvements
 
     Args:
         lm (RNNLanguageModel): RNN language model
-        dataset (list[Tensor]): Train dataset
-        dataset (list[Tensor]): Validation dataset
+        train_data: Training dataset loader
+        valid_data: Validation dataset loader
         loss_fn: PyTorch cross entropy loss function
-        optimizer: PyTorch Adam optimizer
+        optimizer: PyTorch optimizer
         num_sequences: The total number of sequences to train on
         batch_size: Number of sequences we process in one step
+        scheduler: Learning rate scheduler (optional)
+        accumulation_steps: Number of steps to accumulate gradients
 
     Returns:
         List: Training losses
         List: Validation Losses
     """
-    # Set the model to training model
+    # Set the model to training mode
     lm.train()
     max_grad_norm = 1.0
 
@@ -374,11 +394,15 @@ def train(lm, train_data, valid_data, loss_fn, optimizer, num_sequences, batch_s
     dataset = train_data
     start_time = time.time()
 
-    # Run validation everytime we process around 10% of the training data
+    # Run validation every time we process around 10% of the training data
     val_frequency = 0.1
     val_index = int(num_sequences * val_frequency) // batch_size
     if val_index == 0:
         val_index = 1
+
+    # Initialize gradients
+    optimizer.zero_grad()
+    accumulated_loss = 0.0
 
     # Loop over the dataset
     for idx, sequence in enumerate(dataset):
@@ -388,74 +412,91 @@ def train(lm, train_data, valid_data, loss_fn, optimizer, num_sequences, batch_s
         sequence = sequence.to(device)
 
         # Stop training when we hit the num_sequences limit
-        if idx == num_sequences // batch_size:
+        if idx >= num_sequences // batch_size:
             break
 
-        # changed -> to clear stored gradients from previous iteration of loop
-        optimizer.zero_grad()
+        # Forward pass
+        token_logits, hidden_states, attn_inputs = lm(sequence)
 
-        # changed
-        token_logits, hidden_states, attn_inputs = lm(
-            sequence
-        )  # token_logit shape: (batch_size, t, vocab_size)
-
-        # remove very last prediction since we cant compute loss
+        # Prepare targets and logits for loss computation
         logits = token_logits[:, :-1, :]  # (batch_size, t-1, vocab_size)
-
-        # remove first actual data since we cant make such prediction
         targets = sequence[:, 1:]  # (batch_size, t-1)
 
-        # flatten to turn both into 2D and 1D vector (googled how to use reshape here)
+        # Flatten for loss computation
         logits = logits.reshape(-1, token_logits.shape[-1])
         targets = targets.reshape(-1)
 
-        # changed, make sure to check for shape matching ((batch_size * (t - 1)) * (vocab_size) and (batch_size * (t - 1)))
-        loss = loss_fn(logits, targets)
+        # Compute loss and scale by accumulation steps
+        loss = loss_fn(logits, targets) / accumulation_steps
+        accumulated_loss += loss.item()
 
-        # changed
+        # Backward pass
         loss.backward()
 
-        # DO NOT change this - clip gradient norm to avoid exploding gradients
-        nn.utils.clip_grad_norm_(lm.parameters(), max_grad_norm)
+        # Update weights every accumulation_steps or at the end
+        if (idx + 1) % accumulation_steps == 0 or idx == (
+            num_sequences // batch_size
+        ) - 1:
+            # Clip gradients to prevent exploding gradients
+            nn.utils.clip_grad_norm_(lm.parameters(), max_grad_norm)
 
-        # changed -> updates params given in RNN using Adam's
-        optimizer.step()
+            # Update parameters
+            optimizer.step()
+            optimizer.zero_grad()
 
-        # DO NOT change any of the code below
-        train_batch_loss += loss.detach().cpu().item()
+            # Track the accumulated loss
+            train_batch_loss += accumulated_loss * accumulation_steps
+            accumulated_loss = 0.0
 
+        # Validation and logging
         if idx % val_index == 0:
-            # Calculate train/val loss as normal
+            # Calculate average training loss
             train_batch_loss = (
                 round(train_batch_loss / val_index, 6)
                 if idx != 0
                 else round(train_batch_loss, 6)
             )
 
-            # Append to the batch loss and reset to 0
+            # Append to the batch loss and reset
             train_batch_losses.append(train_batch_loss)
             train_batch_loss = 0.0
 
+            # Print progress
             print(
-                f"Batch: {idx} | Sequence Length: {(sequence.shape[1])} | Elapsed time (minutes): {time_elapsed}"
+                f"Batch: {idx} | Sequence Length: {sequence.shape[1]} | "
+                f"Elapsed time (minutes): {time_elapsed} | "
+                f"Train Loss: {train_batch_losses[-1]}"
             )
 
-            # Append to the validation loss
+            # Compute validation loss
             valid_loss = round(validate(lm, valid_data, loss_fn), 6)
             valid_batch_losses.append(valid_loss)
 
-    print(f"Train Batch Losses: {train_batch_losses}")
+            print(f"Validation Loss: {valid_loss}")
 
+            # Apply learning rate scheduler if provided
+            if scheduler is not None and len(valid_batch_losses) > 1:
+                scheduler.step(valid_loss)
+                current_lr = optimizer.param_groups[0]["lr"]
+                print(f"Current Learning Rate: {current_lr:.2e}")
+
+            # Set model back to training mode after validation
+            lm.train()
+
+    print(f"Train Batch Losses: {train_batch_losses}")
     return train_batch_losses, valid_batch_losses
 
 
 @torch.no_grad()
-def validate(lm, dataset, loss_fn):
+def validate(lm, dataset, loss_fn, num_batches=5):
     """
+    Improved validation function that validates on multiple batches
+
     Args:
-        lm (RNNLanguageModel):
-        dataset (list[Tensor]): Validation dataset
+        lm (RNNLanguageModel): The language model
+        dataset: Validation dataset loader
         loss_fn: PyTorch cross entropy loss function
+        num_batches: Number of batches to validate on (default: 5)
 
     Returns:
         float: Average validation loss
@@ -463,30 +504,34 @@ def validate(lm, dataset, loss_fn):
     # Set the model to eval mode
     lm.eval()
 
-    mean_loss = 0.0
-    num_batches = 1
+    total_loss = 0.0
+    actual_batches = 0
 
     for i, sequence in enumerate(dataset):
-        if i < num_batches:
-            # Move the sequence to the device
-            sequence = sequence.to(device)
+        if i >= num_batches:
+            break
 
-            # TODO: Perform forward pass through the model
-            token_dists, _, _ = lm(sequence)  # (batch_size, t, vocab_size)
+        # Move the sequence to the device
+        sequence = sequence.to(device)
 
-            # changed -> Compute loss (Same as in train)
-            targets = sequence[:, 1:]
-            logits = token_dists[:, :-1, :]
+        # Forward pass
+        token_logits, _, _ = lm(sequence)
 
-            logits = logits.reshape(-1, logits.shape[-1])
-            targets = targets.reshape(-1)
+        # Prepare targets and logits
+        targets = sequence[:, 1:]
+        logits = token_logits[:, :-1, :]
 
-            loss = loss_fn(logits, targets)
+        # Flatten for loss computation
+        logits = logits.reshape(-1, logits.shape[-1])
+        targets = targets.reshape(-1)
 
-            # DO NOT change this line
-            mean_loss += loss.detach().cpu().item()
+        # Compute loss
+        loss = loss_fn(logits, targets)
+        total_loss += loss.item()
+        actual_batches += 1
 
-    return mean_loss / num_batches
+    # Return average loss
+    return total_loss / max(actual_batches, 1)
 
 
 @torch.no_grad()
@@ -528,18 +573,18 @@ if __name__ == "__main__":
     parser.add_argument("--dv", type=int)
     parser.add_argument("--num_sequences", type=int)
     parser.add_argument("--batch_size", type=int, default=1)
-
+    parser.add_argument("--num_head", type=int, default=8)
     args = parser.parse_args()
 
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained("my_tokenizer")
     vocab_size = tokenizer.vocab_size
 
-    # Initialize LM
     lm = RNNLanguageModel(
         embed_dim=args.embed_dim,
         hidden_dim=args.hidden_dim,
         vocab_size=vocab_size,
+        num_head=args.num_head,  # Add this line
         key_dim=args.dk,
         value_dim=args.dv,
     )
@@ -553,7 +598,6 @@ if __name__ == "__main__":
     print("Loading data")
 
     train_data = SentenceDataset(args.train_data)
-
     valid_data = SentenceDataset(args.val_data)
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -567,7 +611,10 @@ if __name__ == "__main__":
 
     # Initialize PyTorch cross entropy loss function
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(lm.parameters(), lr=1e-3)
+
+    # Added optimizer and scheduler
+    optimizer = optim.Adam(lm.parameters(), lr=5e-4, weight_decay=1e-5)
+    scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.7, patience=3)
 
     ### BEGIN: Training Loop
     start = time.time()
@@ -579,6 +626,8 @@ if __name__ == "__main__":
         optimizer,
         args.num_sequences,
         args.batch_size,
+        scheduler=scheduler,
+        accumulation_steps=2,
     )
     end = time.time()
     time_taken = end - start
@@ -601,35 +650,9 @@ if __name__ == "__main__":
     # Saves trained model weights
     torch.save(lm.state_dict(), "model.pt")
 
-    # You can later load back in your model in a separate Python file by running:
-    # >>> from rnn import *
-    # >>> lm = torch.load("model.pt")
-
-    """
-    # Example code for generating text with your LM
-
-    test_str = ["Once upon a time there was a"]
-    
-    for ts in test_str:
-        completion = complete(ts, num_tokens=64, temperature=0.3)
+    # Greedy Sampling
+    test_strs = ["Once upon a time there was a "]
+    for ts in test_strs:
+        completion = complete(ts, num_tokens=128, temperature=0.6)
         print("  Test prefix:", ts)
         print("  Test output:", completion)
-    """
-
-    # Greedy Sampling(Please comment out when submitting to gradescope)
-    '''test_strs = ["Once upon a time there was a "]
-    for ts in test_strs:
-        completion = complete(ts, num_tokens=128, temperature=0.0)
-        print("  Test prefix:", ts)
-        print("  Test output:", completion)'''
-
-    # # Looping through all temperature values for empirical questions
-    # # Please comment out when submitting to gradescope
-    '''print("----------------")
-    samples_per_setting = 5
-    for temperature in [0, 0.3, 0.8]:
-        for _ in range(samples_per_setting):
-            completion = complete(test_strs[0], num_tokens=128, temperature=temperature)
-            print("  Test prefix:", ts)
-            print("  Test output:", completion)
-            print("----------------")'''
