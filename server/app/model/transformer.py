@@ -3,6 +3,7 @@ from torch import nn, optim, Tensor
 from typing import Optional
 import json
 from transformers import AutoTokenizer
+import torch.nn.functional as F
 import time
 
 # Initialize torch device to use cuda if we have a gpu
@@ -63,7 +64,7 @@ class RNNCell(nn.Module):
         # changed
         emb_out = self.i2h(input)
         prev_out = self.h2h(hidden_state)
-        out = self.activation(emb_out+prev_out)
+        out = self.activation(emb_out + prev_out)
 
         return out
 
@@ -73,7 +74,7 @@ class SelfAttention(nn.Module):
     Multi-Head Scaled Dot-Product Self-Attention.
     """
 
-    def __init__(self, num_head, hidden_dim, key_dim, value_dim):
+    def __init__(self, hidden_dim, num_head, key_dim, value_dim):
         super(SelfAttention, self).__init__()
 
         self.num_head = num_head
@@ -81,12 +82,16 @@ class SelfAttention(nn.Module):
         self.value_dim = value_dim
         self.hidden_dim = hidden_dim
 
-        assert key_dim * num_head <= hidden_dim, "key_dim × num_head must not exceed hidden_dim"
-        assert value_dim * num_head <= hidden_dim, "value_dim × num_head must not exceed hidden_dim"
+        assert (
+            key_dim * num_head <= hidden_dim
+        ), "key_dim × num_head must not exceed hidden_dim"
+        assert (
+            value_dim * num_head <= hidden_dim
+        ), "value_dim × num_head must not exceed hidden_dim"
 
         # Projections: hidden_dim → num_head × (key_dim/value_dim)
         self.query_proj = nn.Linear(hidden_dim, num_head * key_dim)
-        self.key_proj   = nn.Linear(hidden_dim, num_head * key_dim)
+        self.key_proj = nn.Linear(hidden_dim, num_head * key_dim)
         self.value_proj = nn.Linear(hidden_dim, num_head * value_dim)
 
         # Final output projection back to hidden_dim
@@ -109,7 +114,7 @@ class SelfAttention(nn.Module):
 
         # Project input to queries, keys, values
         Q = self.query_proj(y_all)  # (B, T, H*Dk)
-        K = self.key_proj(y_all)    # (B, T, H*Dk)
+        K = self.key_proj(y_all)  # (B, T, H*Dk)
         V = self.value_proj(y_all)  # (B, T, H*Dv)
 
         # Reshape to (B, H, T, Dk or Dv)
@@ -118,11 +123,13 @@ class SelfAttention(nn.Module):
         V = V.view(B, T, H, Dv).transpose(1, 2)  # (B, H, T, Dv)
 
         # Scaled dot-product attention
-        scores = torch.matmul(Q, K.transpose(-2, -1)) / (Dk ** 0.5)  # (B, H, T, T)
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / (Dk**0.5)  # (B, H, T, T)
 
         # Apply causal mask to prevent attending to future tokens
-        mask = torch.tril(torch.ones(T, T, device=y_all.device)).unsqueeze(0).unsqueeze(0)  # (1, 1, T, T)
-        scores = scores.masked_fill(mask == 0, float('-inf'))
+        mask = (
+            torch.tril(torch.ones(T, T, device=y_all.device)).unsqueeze(0).unsqueeze(0)
+        )  # (1, 1, T, T)
+        scores = scores.masked_fill(mask == 0, float("-inf"))
 
         # Attention weights and output
         attn_weights = F.softmax(scores, dim=-1)  # (B, H, T, T)
@@ -152,10 +159,10 @@ class RNN(nn.Module):
         self.hidden_dim = hidden_dim
 
         # changed
-        self.cell = RNNCell(input_dim,hidden_dim)
+        self.cell = RNNCell(input_dim, hidden_dim)
 
         # changed
-        self.out = nn.Linear(hidden_dim,hidden_dim)
+        self.out = nn.Linear(hidden_dim, hidden_dim)
 
     def step(self, input: Tensor, hidden_prev: Optional[Tensor] = None) -> Tensor:
         """
@@ -217,7 +224,7 @@ class RNN(nn.Module):
             inp = sequence[:, i, :]  # (B, 1, input_dim)
 
             # changed
-            next_hidden_state, next_output_state = self.step(inp,hidden_states)
+            next_hidden_state, next_output_state = self.step(inp, hidden_states)
             next_hidden_state = next_hidden_state.unsqueeze(1)
 
             # changed
@@ -236,14 +243,8 @@ class RNN(nn.Module):
 
 
 class RNNLanguageModel(nn.Module):
-    def __init__(
-        self,
-        embed_dim,
-        hidden_dim,
-        vocab_size,
-        key_dim=None,
-        value_dim=None,
-    ):
+    # Add this parameter:
+    def __init__(self, embed_dim, hidden_dim, vocab_size, num_head=8, key_dim=None, value_dim=None):
         """
         embed_dim (int): Dimension of word embeddings
         hidden_dim (int): Dimension of RNN hidden states
@@ -252,10 +253,10 @@ class RNNLanguageModel(nn.Module):
         super(RNNLanguageModel, self).__init__()
 
         # changed
-        self.embeddings = nn.Embedding(vocab_size,embed_dim)
-        self.rnn = RNN(embed_dim,hidden_dim)
-        self.attention = SelfAttention(hidden_dim,key_dim,value_dim)
-        self.lm_head = nn.Linear(hidden_dim,vocab_size)
+        self.embeddings = nn.Embedding(vocab_size, embed_dim)
+        self.rnn = RNN(embed_dim, hidden_dim)
+        self.attention = SelfAttention(hidden_dim, num_head, key_dim, value_dim)
+        self.lm_head = nn.Linear(hidden_dim, vocab_size)
 
     def forward(self, tokens: Tensor) -> Tensor:
         """
@@ -274,7 +275,7 @@ class RNNLanguageModel(nn.Module):
                 - shape (batch_size, t, hidden_dim)
         """
         # changed
-        i = self.embeddings(tokens) # (B, t, embed_dim)
+        i = self.embeddings(tokens)  # (B, t, embed_dim)
         h, y_hats = self.rnn(i)  # both (B, t, hidden_dim)
         o = self.attention(y_hats)  # (B, t, hidden_dim)
         g = self.lm_head(o)  # (B, t, vocab_size)
@@ -304,19 +305,6 @@ class RNNLanguageModel(nn.Module):
             return index
 
     def generate(self, tokens: Tensor, max_tokens=10, temperature=0.0) -> Tensor:
-        """
-        Generates new tokens given `tokens` as a prefix.
-
-        Args:
-            tokens (Tensor): Input tokens
-                - shape: (1, input_length,)
-            max_tokens (int): Number of new tokens to generate
-            temperature (float): Sampling temperature
-
-        Returns:
-            Tensor: generated tokens
-                - shape: (max_tokens,)
-        """
         # Get hidden states for input tokens by calling forward
         token_logits, hidden_states, attn_inputs = self(tokens)
         next_token_logits = token_logits[0, -1]
@@ -324,40 +312,34 @@ class RNNLanguageModel(nn.Module):
         new_tokens = []
         step = 0
 
-        # Now, start generating new tokens
-        # While we could in theory repeatedly call self(tokens) here, we don't since
-        # that's an order of magnitude more inefficient as we would be repeatedly re-encoding
-        # the prefix. Instead, here, we repeatedly compute the hidden state and next token
-        # logits for the *latest* token.
         while True:
             step += 1
 
-            # Select next token based on next_token_logits
+            # Select next token
             next_token = self.select_token(next_token_logits, temperature)
             new_tokens.append(next_token.item())
 
-            # Stop generating once we reach max_tokens
             if step >= max_tokens:
                 break
 
-            # Get next input embedding
-            embed = self.embeddings(next_token)
+            # Get next input embedding - fix the shape issue
+            embed = self.embeddings(next_token.unsqueeze(0).unsqueeze(0))  # Shape: [1, 1, embed_dim]
 
             # Get next hidden state and next attn input state from RNN
-            next_hidden_state, next_attn_input = self.rnn.step(embed, hidden_states)
+            next_hidden_state, next_attn_input = self.rnn.step(embed.squeeze(1), hidden_states)
 
-            # Update hidden states
-            hidden_states = torch.cat(
-                [hidden_states, next_hidden_state.unsqueeze(1)], dim=1
-            )
+            # Update hidden states - ensure consistent dimensions
+            next_hidden_state = next_hidden_state.unsqueeze(1)  # [1, 1, hidden_dim]
+            hidden_states = torch.cat([hidden_states, next_hidden_state], dim=1)
 
             # Update attention inputs
-            attn_inputs = torch.cat([attn_inputs, next_attn_input.unsqueeze(1)], dim=1)
+            next_attn_input = next_attn_input.unsqueeze(1)  # [1, 1, hidden_dim]
+            attn_inputs = torch.cat([attn_inputs, next_attn_input], dim=1)
 
             # Call attention
-            next_output_state = self.attention.step(attn_inputs)
+            next_output_state = self.attention(attn_inputs)[:, -1, :]
 
-            # Generate the token to be used in the next step of generation
+            # Generate next token logits
             next_token_logits = self.lm_head(next_output_state)
 
         return torch.tensor(new_tokens)
@@ -413,13 +395,15 @@ def train(lm, train_data, valid_data, loss_fn, optimizer, num_sequences, batch_s
         optimizer.zero_grad()
 
         # changed
-        token_logits, hidden_states, attn_inputs = lm(sequence) # token_logit shape: (batch_size, t, vocab_size)
+        token_logits, hidden_states, attn_inputs = lm(
+            sequence
+        )  # token_logit shape: (batch_size, t, vocab_size)
 
         # remove very last prediction since we cant compute loss
-        logits = token_logits[:, :-1, :] # (batch_size, t-1, vocab_size)
+        logits = token_logits[:, :-1, :]  # (batch_size, t-1, vocab_size)
 
         # remove first actual data since we cant make such prediction
-        targets = sequence[:, 1:] # (batch_size, t-1)
+        targets = sequence[:, 1:]  # (batch_size, t-1)
 
         # flatten to turn both into 2D and 1D vector (googled how to use reshape here)
         logits = logits.reshape(-1, token_logits.shape[-1])
@@ -491,8 +475,8 @@ def validate(lm, dataset, loss_fn):
             token_dists, _, _ = lm(sequence)  # (batch_size, t, vocab_size)
 
             # changed -> Compute loss (Same as in train)
-            targets = sequence[:, 1:]            
-            logits = token_dists[:, :-1, :]    
+            targets = sequence[:, 1:]
+            logits = token_dists[:, :-1, :]
 
             logits = logits.reshape(-1, logits.shape[-1])
             targets = targets.reshape(-1)
@@ -615,7 +599,7 @@ if __name__ == "__main__":
     print("Final Valid Loss: ", valid_loss[-1])
 
     # Saves trained model weights
-    torch.save(lm, "model.pt")
+    torch.save(lm.state_dict(), "model.pt")
 
     # You can later load back in your model in a separate Python file by running:
     # >>> from rnn import *
@@ -633,33 +617,19 @@ if __name__ == "__main__":
     """
 
     # Greedy Sampling(Please comment out when submitting to gradescope)
-    test_strs = ["Once upon a time there was a "]
+    '''test_strs = ["Once upon a time there was a "]
     for ts in test_strs:
         completion = complete(ts, num_tokens=128, temperature=0.0)
         print("  Test prefix:", ts)
-        print("  Test output:", completion)
+        print("  Test output:", completion)'''
 
     # # Looping through all temperature values for empirical questions
     # # Please comment out when submitting to gradescope
-    print("----------------")
+    '''print("----------------")
     samples_per_setting = 5
     for temperature in [0, 0.3, 0.8]:
         for _ in range(samples_per_setting):
             completion = complete(test_strs[0], num_tokens=128, temperature=temperature)
             print("  Test prefix:", ts)
             print("  Test output:", completion)
-            print("----------------")
-
-    # Save your metrics
-    with open(args.train_losses_out, "w") as f:
-        for loss in train_loss:
-            f.write(str(loss) + "\n")
-
-    with open(args.val_losses_out, "w") as f:
-        for loss in valid_loss:
-            f.write(str(loss) + "\n")
-
-    with open(args.metrics_out, "w") as f:
-        f.write("Final Train Loss: " + str(train_loss[-1]) + "\n")
-        f.write("Final Valid Loss: " + str(valid_loss[-1]) + "\n")
-
+            print("----------------")'''
