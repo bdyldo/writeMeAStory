@@ -1,7 +1,6 @@
 # Model 1 with Final Valid Loss:  2.351648
 # 5,249,280 params training finished in 25 minutes
 
-
 import torch
 from torch import nn, optim, Tensor
 from typing import Optional
