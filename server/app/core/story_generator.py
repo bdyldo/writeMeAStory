@@ -20,7 +20,7 @@ class StoryGenerator:
         self.tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_path))
 
         # Create model instance with same parameters as training
-        # ! # Must match your training exactly
+        # ! # Must match training exactly
         self.model = RNNLanguageModel(
             embed_dim=512, 
             hidden_dim=768,  
