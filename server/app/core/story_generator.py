@@ -1,36 +1,83 @@
-from app.model.transformer import OptimizedLanguageModel, ModelConfig
+import torch
+import asyncio
+from transformers import AutoTokenizer
+from pathlib import Path
+from app.model.transformer import RNNLanguageModel  
 
 class StoryGenerator:
     def __init__(self):
-        # Create your model directly
-        config = ModelConfig(
-            embed_dim=256,
-            hidden_dim=512,
-            vocab_size=10000,  # Set your actual vocab size
-            # ... other config
-        )
-        self.model = OptimizedLanguageModel(config)
+        # Get tokenizer path
+        current_file = Path(__file__)
+        server_dir = current_file.parent.parent.parent
+        tokenizer_path = server_dir / "app" / "model" / "tokenizer"
         
-        # Simple word tokenizer (or use your own)
-        self.vocab = self._create_simple_vocab()
-    
-    def _create_simple_vocab(self):
-        # Quick & dirty tokenizer - replace with yours
-        return {"hello": 1, "world": 2, "story": 3, "the": 4}
+        # Load tokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_path))
+        print(f"📝 Tokenizer loaded with vocab size: {self.tokenizer.vocab_size}")
+        
+        # create model
+        self.model = RNNLanguageModel(
+            embed_dim=256,          
+            hidden_dim=512,          
+            vocab_size=self.tokenizer.vocab_size, 
+            key_dim=64,              
+            value_dim=64            
+        )
+        
+        # loading trained weight from model.pt
+        model_path = server_dir / "app" / "model" / "model.pt"
+        if model_path.exists():
+            print(f"🎯 Loading trained weights from: {model_path}")
+            try:
+                checkpoint = torch.load(str(model_path), map_location='cpu')
+                if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                    self.model.load_state_dict(checkpoint['model_state_dict'])
+                elif hasattr(checkpoint, 'state_dict'):  # If full model was saved
+                    self.model = checkpoint
+                else:
+                    print("⚠️ Could not load weights, using random initialization")
+            except Exception as e:
+                print(f"⚠️ Could not load weights: {e}, using random initialization")
+        else:
+            print("⚠️ No trained weights found, using random initialization")
+        
+        # switch model to eval mode
+        self.model.eval()
+        print(f"✅ Model ready with {sum(p.numel() for p in self.model.parameters()):,} parameters")
     
     async def generate_story_stream(self, prompt, max_tokens, temperature):
-        # Convert prompt to token IDs however you want
-        token_ids = self._text_to_tokens(prompt)
-        input_tensor = torch.tensor([token_ids])
-        
-        # Generate with YOUR model
-        generated = self.model.generate(
-            input_tensor, 
-            max_new_tokens=max_tokens, 
-            temperature=temperature
-        )
-        
-        # Stream tokens back
-        for token_id in generated:
-            token_text = self._token_to_text(token_id.item())
-            yield token_text
+        try:
+            print(f"🎭 Generating story for: '{prompt[:50]}...'")
+            
+            # Convert prompt to tokens using model's approach
+            input_ids = self.tokenizer.encode(prompt, add_special_tokens=False, return_tensors="pt")
+            
+            # Use transformer model to generate tokens
+            generated_tokens = self.model.generate(
+                input_ids, 
+                max_tokens=max_tokens, 
+                temperature=temperature
+            )
+            
+            print(f"🔤 Generated {len(generated_tokens)} tokens")
+            
+            # Stream each token
+            for i, token_id in enumerate(generated_tokens):
+                # Decode single token
+                token_text = self.tokenizer.decode([token_id.item()], skip_special_tokens=True)
+                
+                # Only yield non-empty tokens
+                if token_text.strip():
+                    print(f"📤 Token {i}: '{token_text}'")  # Debug output
+                    yield token_text
+                    
+                # Small delay for streaming effect
+                await asyncio.sleep(0.1)
+                
+            print("✅ Story generation completed")
+                
+        except Exception as e:
+            print(f"❌ Generation error: {e}")
+            import traceback
+            traceback.print_exc()
+            yield f" [Error: {str(e)}]"

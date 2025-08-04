@@ -1,526 +1,665 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch import Tensor
-from typing import Optional, Tuple, Dict, Any
+from torch import nn, optim, Tensor
+from typing import Optional
 import json
+from transformers import AutoTokenizer
 import time
-from dataclasses import dataclass
-import math
 
-# Optimized device detection
+# Initialize torch device to use cuda if we have a gpu
 device = (
     "cuda"
     if torch.cuda.is_available()
     else "mps" if torch.backends.mps.is_available() else "cpu"
 )
 
-
-@dataclass
-class ModelConfig:
-    """Configuration for the optimized model"""
-
-    embed_dim: int = 256
-    hidden_dim: int = 512
-    vocab_size: int = 50000
-    num_heads: int = 8
-    key_dim: int = 64
-    value_dim: int = 64
-    max_seq_length: int = 1024
-    dropout: float = 0.1
+# print(f"Using device: {device}")
 
 
-class OptimizedSelfAttention(nn.Module):
-    """
-    Optimized Multi-Head Self-Attention with KV caching and performance improvements
-    """
+class SentenceDataset:
+    def __init__(self, a):
+        with open(a) as f:
+            data = json.load(f)
+            data = [torch.tensor(seq) for seq in data]
+        self.data = data
 
-    def __init__(self, config: ModelConfig):
-        super().__init__()
+    def __len__(self):
+        return len(self.data)
 
-        self.config = config
-        self.num_heads = config.num_heads
-        self.key_dim = config.key_dim
-        self.value_dim = config.value_dim
-        self.hidden_dim = config.hidden_dim
+    def __getitem__(self, idx):
+        return self.data[idx]
 
-        # Ensure dimensions are compatible
-        assert self.key_dim * self.num_heads <= self.hidden_dim
-        assert self.value_dim * self.num_heads <= self.hidden_dim
 
-        # Combined QKV projection for efficiency
-        self.qkv_proj = nn.Linear(
-            self.hidden_dim,
-            self.num_heads * (self.key_dim * 2 + self.value_dim),
-            bias=False,
-        )
-
-        # Output projection
-        self.output_proj = nn.Linear(self.num_heads * self.value_dim, self.hidden_dim)
-        self.dropout = nn.Dropout(config.dropout)
-
-        # Precompute scaling factor
-        self.scale = 1.0 / math.sqrt(self.key_dim)
-
-        # Register buffer for causal mask
-        self.register_buffer(
-            "causal_mask",
-            torch.tril(torch.ones(config.max_seq_length, config.max_seq_length)),
-        )
-
-    def forward(
-        self,
-        hidden_states: Tensor,
-        past_key_values: Optional[Tuple[Tensor, Tensor]] = None,
-        use_cache: bool = False,
-    ) -> Tuple[Tensor, Optional[Tuple[Tensor, Tensor]]]:
+class RNNCell(nn.Module):
+    def __init__(self, input_dim, hidden_dim):
         """
-        Forward pass with optional KV caching
-
-        Args:
-            hidden_states: (B, T, hidden_dim)
-            past_key_values: Optional cached (key, value) from previous steps
-            use_cache: Whether to return cached key/values for next step
-
-        Returns:
-            output: (B, T, hidden_dim)
-            present_key_values: Optional cached (key, value) for next step
+        input_dim (int): Input dimension of RNN
+        hidden_dim (int): Hidden dimension of RNN
         """
-        B, T, _ = hidden_states.shape
-
-        # Combined QKV projection
-        qkv = self.qkv_proj(hidden_states)
-
-        # Split into Q, K, V
-        q_size = self.num_heads * self.key_dim
-        k_size = self.num_heads * self.key_dim
-        v_size = self.num_heads * self.value_dim
-
-        q, k, v = torch.split(qkv, [q_size, k_size, v_size], dim=-1)
-
-        # Reshape and transpose for attention
-        q = q.view(B, T, self.num_heads, self.key_dim).transpose(1, 2)  # (B, H, T, Dk)
-        k = k.view(B, T, self.num_heads, self.key_dim).transpose(1, 2)  # (B, H, T, Dk)
-        v = v.view(B, T, self.num_heads, self.value_dim).transpose(
-            1, 2
-        )  # (B, H, T, Dv)
-
-        # Handle KV caching for generation
-        if past_key_values is not None:
-            past_k, past_v = past_key_values
-            k = torch.cat([past_k, k], dim=-2)  # Concatenate along sequence dimension
-            v = torch.cat([past_v, v], dim=-2)
-
-        present_key_values = (k, v) if use_cache else None
-
-        # Compute attention scores
-        scores = torch.matmul(q, k.transpose(-2, -1)) * self.scale  # (B, H, T, S)
-
-        # Apply causal mask
-        S = k.size(-2)  # Key sequence length (may be longer due to caching)
-        T_q = q.size(-2)  # Query sequence length
-
-        # Create appropriate mask for current sequence lengths
-        if S > self.causal_mask.size(0):
-            # Extend mask if needed
-            extended_mask = torch.tril(torch.ones(S, S, device=hidden_states.device))
-        else:
-            extended_mask = self.causal_mask[:S, :S]
-
-        # Apply mask to the last T_q rows and all S columns
-        mask = extended_mask[-T_q:, :S].unsqueeze(0).unsqueeze(0)  # (1, 1, T_q, S)
-        scores = scores.masked_fill(mask == 0, float("-inf"))
-
-        # Attention weights and output
-        attn_weights = F.softmax(scores, dim=-1)
-        attn_weights = self.dropout(attn_weights)
-
-        attn_output = torch.matmul(attn_weights, v)  # (B, H, T, Dv)
-
-        # Merge heads
-        attn_output = (
-            attn_output.transpose(1, 2)
-            .contiguous()
-            .view(B, T_q, self.num_heads * self.value_dim)
-        )
-
-        # Final projection
-        output = self.output_proj(attn_output)
-
-        return output, present_key_values
-
-
-class OptimizedRNNCell(nn.Module):
-    """Optimized RNN Cell with better initialization and activation"""
-
-    def __init__(self, input_dim: int, hidden_dim: int, dropout: float = 0.1):
-        super().__init__()
+        super(RNNCell, self).__init__()
 
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
 
-        # Use more efficient combined linear layer
-        self.input_proj = nn.Linear(input_dim, hidden_dim)
-        self.hidden_proj = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        # changed
+        self.i2h = nn.Linear(input_dim, hidden_dim)
+        self.h2h = nn.Linear(hidden_dim, hidden_dim)
 
-        # Use GELU for better gradients
-        self.activation = nn.GELU()
-        self.dropout = nn.Dropout(dropout)
+        # See here for PyTorch activation functions
+        # https://pytorch.org/docs/stable/nn.html#non-linear-activations-weighted-sum-nonlinearity
+        self.activation = nn.ReLU()
 
-        # Better initialization
-        self._init_weights()
+    def forward(self, input: Tensor, hidden_state: Tensor) -> Tensor:
+        """
+        Args:
+            input (Tensor): Input at timestep t
+                - shape: (batch_size, input_dim,)
+            hidden_state (Tensor): Hidden state from timestep t-1
+                - shape: (batch_size, hidden_dim,)
 
-    def _init_weights(self):
-        # Xavier initialization for better training stability
-        nn.init.xavier_uniform_(self.input_proj.weight)
-        nn.init.xavier_uniform_(self.hidden_proj.weight)
-        if self.input_proj.bias is not None:
-            nn.init.zeros_(self.input_proj.bias)
+        Returns:
+            Tensor: Next hidden state at timestep t
+                - shape: (batch_size, hidden_dim)
+        """
+        # changed
+        emb_out = self.i2h(input)
+        prev_out = self.h2h(hidden_state)
+        out = self.activation(emb_out+prev_out)
 
-    def forward(self, input_tensor: Tensor, hidden_state: Tensor) -> Tensor:
-        # More numerically stable computation
-        input_contrib = self.input_proj(input_tensor)
-        hidden_contrib = self.hidden_proj(hidden_state)
+        return out
 
-        combined = input_contrib + hidden_contrib
-        output = self.activation(combined)
-        output = self.dropout(output)
+
+class SelfAttention(nn.Module):
+    """
+    Multi-Head Scaled Dot-Product Self-Attention.
+    """
+
+    def __init__(self, num_head, hidden_dim, key_dim, value_dim):
+        super(SelfAttention, self).__init__()
+
+        self.num_head = num_head
+        self.key_dim = key_dim
+        self.value_dim = value_dim
+        self.hidden_dim = hidden_dim
+
+        assert key_dim * num_head <= hidden_dim, "key_dim × num_head must not exceed hidden_dim"
+        assert value_dim * num_head <= hidden_dim, "value_dim × num_head must not exceed hidden_dim"
+
+        # Projections: hidden_dim → num_head × (key_dim/value_dim)
+        self.query_proj = nn.Linear(hidden_dim, num_head * key_dim)
+        self.key_proj   = nn.Linear(hidden_dim, num_head * key_dim)
+        self.value_proj = nn.Linear(hidden_dim, num_head * value_dim)
+
+        # Final output projection back to hidden_dim
+        self.output_proj = nn.Linear(num_head * value_dim, hidden_dim)
+
+    def forward(self, y_all):
+        """
+        Compute multi-head self-attention for all timesteps.
+
+        Args:
+            y_all (Tensor): shape (B, T, hidden_dim)
+
+        Returns:
+            Tensor: shape (B, T, hidden_dim)
+        """
+        B, T, _ = y_all.shape
+        H = self.num_head
+        Dk = self.key_dim
+        Dv = self.value_dim
+
+        # Project input to queries, keys, values
+        Q = self.query_proj(y_all)  # (B, T, H*Dk)
+        K = self.key_proj(y_all)    # (B, T, H*Dk)
+        V = self.value_proj(y_all)  # (B, T, H*Dv)
+
+        # Reshape to (B, H, T, Dk or Dv)
+        Q = Q.view(B, T, H, Dk).transpose(1, 2)  # (B, H, T, Dk)
+        K = K.view(B, T, H, Dk).transpose(1, 2)  # (B, H, T, Dk)
+        V = V.view(B, T, H, Dv).transpose(1, 2)  # (B, H, T, Dv)
+
+        # Scaled dot-product attention
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / (Dk ** 0.5)  # (B, H, T, T)
+
+        # Apply causal mask to prevent attending to future tokens
+        mask = torch.tril(torch.ones(T, T, device=y_all.device)).unsqueeze(0).unsqueeze(0)  # (1, 1, T, T)
+        scores = scores.masked_fill(mask == 0, float('-inf'))
+
+        # Attention weights and output
+        attn_weights = F.softmax(scores, dim=-1)  # (B, H, T, T)
+        attn_output = torch.matmul(attn_weights, V)  # (B, H, T, Dv)
+
+        # Merge heads: (B, T, H * Dv)
+        attn_output = attn_output.transpose(1, 2).contiguous().view(B, T, H * Dv)
+
+        # Final linear projection
+        output = self.output_proj(attn_output)  # (B, T, hidden_dim)
 
         return output
 
 
-class OptimizedRNN(nn.Module):
-    """Optimized RNN with better memory management"""
-
-    def __init__(self, input_dim: int, hidden_dim: int, dropout: float = 0.1):
-        super().__init__()
-
+class RNN(nn.Module):
+    def __init__(
+        self,
+        input_dim: int,
+        hidden_dim: int,
+    ):
+        """
+        input_dim (int): Input dimension of RNN
+        hidden_dim (int): Hidden dimension of RNN
+        """
+        super(RNN, self).__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
 
-        self.cell = OptimizedRNNCell(input_dim, hidden_dim, dropout)
-        self.output_proj = nn.Linear(hidden_dim, hidden_dim)
+        # changed
+        self.cell = RNNCell(input_dim,hidden_dim)
 
-    def forward(
-        self, sequence: Tensor, initial_hidden: Optional[Tensor] = None
-    ) -> Tuple[Tensor, Tensor]:
+        # changed
+        self.out = nn.Linear(hidden_dim,hidden_dim)
+
+    def step(self, input: Tensor, hidden_prev: Optional[Tensor] = None) -> Tensor:
         """
-        Process entire sequence efficiently
+        Compute hidden and output states for a single timestep
 
         Args:
-            sequence: (B, T, input_dim)
-            initial_hidden: Optional initial hidden state
+            input (Tensor): input at current timestep t
+                - shape: (batch_size, input_dim,)
+            hidden_prev (Tensor): hidden states of preceding timesteps [1, t-1]
+                If there are no previous hidden states (i.e. we are at t=1), then
+                this may be None and we will initialize the previous hidden state
+                to all zeros.
+                - shape: (batch_size, t-1, hidden_dim)
 
         Returns:
-            hidden_states: (B, T, hidden_dim)
-            output_states: (B, T, hidden_dim)
+            Tensor: RNN hidden state at current timestep t
+                - shape: (batch_size, hidden_dim,)
+            Tensor: RNN output at current timestep t.
+                RNN output state at current timestep t
+                - shape: (batch_size, hidden_dim,)
         """
-        B, T, _ = sequence.shape
+        if hidden_prev is None:
+            # If this is the first timestep and there is no previous hidden state,
+            # create a dummy hidden state of all zeros
 
-        if initial_hidden is None:
-            hidden = torch.zeros(
-                B, self.hidden_dim, device=sequence.device, dtype=sequence.dtype
-            )
+            # changed
+            batch_size = input.shape[0]
+            last_hidden_state = torch.zeros(batch_size, self.hidden_dim).to(input)
         else:
-            hidden = initial_hidden
+            # changed
+            last_hidden_state = hidden_prev[:, -1, :]  # (B, hidden_dim)
 
-        hidden_states = []
+        # Call the RNN cell and apply the transform to get a prediction
+        next_hidden_state = self.cell(input, last_hidden_state)
+        next_output_state = self.out(next_hidden_state)
+
+        return next_hidden_state, next_output_state
+
+    def forward(self, sequence: Tensor) -> Tensor:
+        """
+        Compute hidden and output states for all timesteps over input sequence
+
+        Args:
+            sequence (Tensor): inputs to RNN over t timesteps
+                - shape (batch_size, t, input_dim)
+
+        Returns:
+            Tensor: hidden states over t timesteps
+                - shape (batch_size, t, hidden_dim)
+            Tensor: output states over t timesteps
+                - shape (batch_size, t, hidden_dim)
+        """
+        hidden_states = None
         output_states = []
+        _, t, _ = sequence.shape
 
-        # Process sequence step by step (could be optimized further with parallel scan)
-        for t in range(T):
-            hidden = self.cell(sequence[:, t], hidden)
-            output = self.output_proj(hidden)
+        for i in range(t):
+            # changed -> extract current input sequence
+            inp = sequence[:, i, :]  # (B, 1, input_dim)
 
-            hidden_states.append(hidden)
-            output_states.append(output)
+            # changed
+            next_hidden_state, next_output_state = self.step(inp,hidden_states)
+            next_hidden_state = next_hidden_state.unsqueeze(1)
 
-        # Stack efficiently
-        hidden_states = torch.stack(hidden_states, dim=1)  # (B, T, hidden_dim)
+            # changed
+            if hidden_states is None:
+                hidden_states = next_hidden_state
+            else:
+                hidden_states = torch.cat([hidden_states, next_hidden_state], dim=1)
+
+            # changed
+            output_states.append(next_output_state)  # (B, hidden_dim)
+
+        # changed -> torch.stack all of the output states over the timestep dim
         output_states = torch.stack(output_states, dim=1)  # (B, T, hidden_dim)
 
         return hidden_states, output_states
 
-    def step(self, input_tensor: Tensor, hidden_state: Tensor) -> Tuple[Tensor, Tensor]:
-        """Single step for generation"""
-        next_hidden = self.cell(input_tensor, hidden_state)
-        next_output = self.output_proj(next_hidden)
-        return next_hidden, next_output
 
-
-class OptimizedLanguageModel(nn.Module):
-    """
-    Optimized Language Model with performance improvements
-    """
-
-    def __init__(self, config: ModelConfig):
-        super().__init__()
-
-        self.config = config
-
-        # Components
-        self.embeddings = nn.Embedding(config.vocab_size, config.embed_dim)
-        self.rnn = OptimizedRNN(config.embed_dim, config.hidden_dim, config.dropout)
-        self.attention = OptimizedSelfAttention(config)
-        self.layer_norm = nn.LayerNorm(config.hidden_dim)
-        self.lm_head = nn.Linear(config.hidden_dim, config.vocab_size)
-
-        # Initialize weights
-        self._init_weights()
-
-        # Enable torch.compile for PyTorch 2.0+ (if available)
-        self._setup_compilation()
-
-    def _init_weights(self):
-        """Better weight initialization"""
-        # Embedding initialization
-        nn.init.normal_(self.embeddings.weight, mean=0.0, std=0.02)
-
-        # LM head initialization (tied with embeddings for efficiency)
-        nn.init.normal_(self.lm_head.weight, mean=0.0, std=0.02)
-        if self.lm_head.bias is not None:
-            nn.init.zeros_(self.lm_head.bias)
-
-    def _setup_compilation(self):
-        """Setup torch.compile if available"""
-        try:
-            if hasattr(torch, "compile"):
-                # Compile attention for faster inference
-                self.attention = torch.compile(self.attention, mode="max-autotune")
-                print("✓ Attention layer compiled with torch.compile")
-        except Exception as e:
-            print(f"Note: torch.compile not available: {e}")
-
-    def forward(
+class RNNLanguageModel(nn.Module):
+    def __init__(
         self,
-        tokens: Tensor,
-        past_key_values: Optional[Tuple[Tensor, Tensor]] = None,
-        use_cache: bool = False,
-    ) -> Dict[str, Any]:
+        embed_dim,
+        hidden_dim,
+        vocab_size,
+        key_dim=None,
+        value_dim=None,
+    ):
         """
-        Forward pass with optional caching
+        embed_dim (int): Dimension of word embeddings
+        hidden_dim (int): Dimension of RNN hidden states
+        vocab_size (int): Number of (sub)words in model vocabulary
         """
-        # Embeddings
-        embeddings = self.embeddings(tokens)  # (B, T, embed_dim)
+        super(RNNLanguageModel, self).__init__()
 
-        # RNN processing
-        hidden_states, rnn_outputs = self.rnn(embeddings)  # (B, T, hidden_dim)
+        # changed
+        self.embeddings = nn.Embedding(vocab_size,embed_dim)
+        self.rnn = RNN(embed_dim,hidden_dim)
+        self.attention = SelfAttention(hidden_dim,key_dim,value_dim)
+        self.lm_head = nn.Linear(hidden_dim,vocab_size)
 
-        # Self-attention with caching
-        attn_output, present_key_values = self.attention(
-            rnn_outputs, past_key_values=past_key_values, use_cache=use_cache
-        )
-
-        # Layer norm and residual connection
-        attn_output = self.layer_norm(attn_output + rnn_outputs)
-
-        # Language modeling head
-        logits = self.lm_head(attn_output)  # (B, T, vocab_size)
-
-        return {
-            "logits": logits,
-            "hidden_states": hidden_states,
-            "rnn_outputs": rnn_outputs,
-            "present_key_values": present_key_values,
-        }
-
-    @torch.no_grad()
-    def generate(
-        self,
-        input_ids: Tensor,
-        max_new_tokens: int = 100,
-        temperature: float = 1.0,
-        do_sample: bool = True,
-        top_p: float = 0.9,
-        repetition_penalty: float = 1.1,
-    ) -> Tensor:
+    def forward(self, tokens: Tensor) -> Tensor:
         """
-        Optimized generation with KV caching and advanced sampling
+        Computes next-token logits and hidden states for each token in tokens
+
+        Args:
+            tokens (Tensor): Input tokens IDs
+                - shape (batch_size, t,)
+
+        Returns:
+            Tensor: Next-token logits for each token from the LM head
+                - shape (batch_size, t, vocab_size)
+            Tensor: RNN hidden states for each token
+                - shape (batch_size, t, hidden_dim)
+            Tensor: RNN output states for each token
+                - shape (batch_size, t, hidden_dim)
         """
-        self.eval()
+        # changed
+        i = self.embeddings(tokens) # (B, t, embed_dim)
+        h, y_hats = self.rnn(i)  # both (B, t, hidden_dim)
+        o = self.attention(y_hats)  # (B, t, hidden_dim)
+        g = self.lm_head(o)  # (B, t, vocab_size)
 
-        batch_size = input_ids.size(0)
-        device = input_ids.device
+        return g, h, y_hats
 
-        # Initial forward pass to get KV cache
-        outputs = self.forward(input_ids, use_cache=True)
-        past_key_values = outputs["present_key_values"]
+    def select_token(self, token_logits: Tensor, temperature: float) -> int:
+        """
+        Selects (or samples) next token from token_logits
 
-        # Start generation
-        generated_tokens = []
-        current_length = input_ids.size(1)
+        Args:
+            token_logits (Tensor): Next token logits
+                - shape (batch_size, vocab_size,)
+            temperature (float): Sampling temperature. If 0, do greedy decoding.
 
-        # Prepare next token logits
-        next_token_logits = outputs["logits"][:, -1, :]  # (B, vocab_size)
+        Returns:
+            index (int): ID of next token selected
+        """
+        if temperature == 0:
+            # Greedy Decoding
+            return torch.argmax(token_logits, dim=-1)
+        else:
+            # Temperature Sampling
+            token_logits = token_logits / temperature
+            token_probs = torch.softmax(token_logits, dim=-1)
+            index = torch.multinomial(token_probs, 1)[0]
+            return index
 
-        for step in range(max_new_tokens):
-            # Apply repetition penalty
-            if repetition_penalty != 1.0 and step > 0:
-                # Get all previous tokens (input + generated)
-                all_tokens = torch.cat(
-                    [input_ids]
-                    + [torch.tensor([[t]], device=device) for t in generated_tokens],
-                    dim=1,
-                )
-                for batch_idx in range(batch_size):
-                    for token_id in all_tokens[batch_idx]:
-                        if next_token_logits[batch_idx, token_id] > 0:
-                            next_token_logits[batch_idx, token_id] /= repetition_penalty
-                        else:
-                            next_token_logits[batch_idx, token_id] *= repetition_penalty
+    def generate(self, tokens: Tensor, max_tokens=10, temperature=0.0) -> Tensor:
+        """
+        Generates new tokens given `tokens` as a prefix.
 
-            # Sample next token
-            if do_sample:
-                next_token = self._sample_token(next_token_logits, temperature, top_p)
-            else:
-                next_token = torch.argmax(next_token_logits, dim=-1)
+        Args:
+            tokens (Tensor): Input tokens
+                - shape: (1, input_length,)
+            max_tokens (int): Number of new tokens to generate
+            temperature (float): Sampling temperature
 
-            generated_tokens.append(next_token.item())
+        Returns:
+            Tensor: generated tokens
+                - shape: (max_tokens,)
+        """
+        # Get hidden states for input tokens by calling forward
+        token_logits, hidden_states, attn_inputs = self(tokens)
+        next_token_logits = token_logits[0, -1]
 
-            # Prepare for next iteration
-            next_token_input = next_token.unsqueeze(0)  # (1, 1)
+        new_tokens = []
+        step = 0
 
-            # Get embeddings for next token
-            next_embeddings = self.embeddings(next_token_input)
+        # Now, start generating new tokens
+        # While we could in theory repeatedly call self(tokens) here, we don't since
+        # that's an order of magnitude more inefficient as we would be repeatedly re-encoding
+        # the prefix. Instead, here, we repeatedly compute the hidden state and next token
+        # logits for the *latest* token.
+        while True:
+            step += 1
 
-            # RNN step (we need to maintain RNN state)
-            # For simplicity, we'll do a full forward pass but this could be optimized
-            outputs = self.forward(
-                next_token_input, past_key_values=past_key_values, use_cache=True
-            )
-            past_key_values = outputs["present_key_values"]
-            next_token_logits = outputs["logits"][:, -1, :]
+            # Select next token based on next_token_logits
+            next_token = self.select_token(next_token_logits, temperature)
+            new_tokens.append(next_token.item())
 
-            current_length += 1
-
-            # Check for early stopping conditions
-            if next_token.item() == self.config.vocab_size - 1:  # Assuming EOS token
+            # Stop generating once we reach max_tokens
+            if step >= max_tokens:
                 break
 
-        return torch.tensor(generated_tokens, device=device)
+            # Get next input embedding
+            embed = self.embeddings(next_token)
 
-    def _sample_token(self, logits: Tensor, temperature: float, top_p: float) -> Tensor:
-        """Advanced sampling with temperature and nucleus sampling"""
-        if temperature == 0:
-            return torch.argmax(logits, dim=-1)
+            # Get next hidden state and next attn input state from RNN
+            next_hidden_state, next_attn_input = self.rnn.step(embed, hidden_states)
 
-        # Apply temperature
-        logits = logits / temperature
+            # Update hidden states
+            hidden_states = torch.cat(
+                [hidden_states, next_hidden_state.unsqueeze(1)], dim=1
+            )
 
-        # Nucleus (top-p) sampling
-        if top_p < 1.0:
-            sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-            cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+            # Update attention inputs
+            attn_inputs = torch.cat([attn_inputs, next_attn_input.unsqueeze(1)], dim=1)
 
-            # Remove tokens with cumulative probability above the threshold
-            sorted_indices_to_remove = cumulative_probs > top_p
-            sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
-                ..., :-1
-            ].clone()
-            sorted_indices_to_remove[..., 0] = 0
+            # Call attention
+            next_output_state = self.attention.step(attn_inputs)
 
-            # Set logits to -inf for removed tokens
-            logits = logits.scatter(1, sorted_indices, sorted_logits)
-            logits[sorted_indices_to_remove] = float("-inf")
+            # Generate the token to be used in the next step of generation
+            next_token_logits = self.lm_head(next_output_state)
 
-        # Sample from the filtered distribution
-        probs = F.softmax(logits, dim=-1)
-        next_token = torch.multinomial(probs, num_samples=1)
-
-        return next_token.squeeze(-1)
+        return torch.tensor(new_tokens)
 
 
-class ModelOptimizer:
-    """Utility class for model optimization"""
+def train(lm, train_data, valid_data, loss_fn, optimizer, num_sequences, batch_size):
+    """
+    Run one epoch of language model training
 
-    @staticmethod
-    def optimize_for_inference(model: OptimizedLanguageModel) -> OptimizedLanguageModel:
-        """Apply various optimizations for inference"""
+    Args:
+        lm (RNNLanguageModel): RNN language model
+        dataset (list[Tensor]): Train dataset
+        dataset (list[Tensor]): Validation dataset
+        loss_fn: PyTorch cross entropy loss function
+        optimizer: PyTorch Adam optimizer
+        num_sequences: The total number of sequences to train on
+        batch_size: Number of sequences we process in one step
 
-        # Set to eval mode
-        model.eval()
+    Returns:
+        List: Training losses
+        List: Validation Losses
+    """
+    # Set the model to training model
+    lm.train()
+    max_grad_norm = 1.0
 
-        # Fuse operations where possible
-        try:
-            if hasattr(torch.nn.utils, "fuse_conv_bn_eval"):
-                # This is more relevant for CNNs, but keeping for completeness
-                pass
-        except AttributeError:
-            pass
+    train_batch_losses = []
+    train_batch_loss = 0.0
+    valid_batch_losses = []
 
-        # Convert to half precision if using GPU
-        if device == "cuda":
-            model = model.half()
-            print("✓ Converted model to half precision (FP16)")
+    # DO NOT change the next line
+    dataset = train_data
+    start_time = time.time()
 
-        # Enable attention optimizations
-        try:
-            if hasattr(torch.backends, "opt_einsum"):
-                torch.backends.opt_einsum.enabled = True
-        except AttributeError:
-            pass
+    # Run validation everytime we process around 10% of the training data
+    val_frequency = 0.1
+    val_index = int(num_sequences * val_frequency) // batch_size
+    if val_index == 0:
+        val_index = 1
 
-        return model
+    # Loop over the dataset
+    for idx, sequence in enumerate(dataset):
+        time_elapsed = round((time.time() - start_time) / 60, 6)
 
-    @staticmethod
-    def get_model_info(model: OptimizedLanguageModel) -> Dict[str, Any]:
-        """Get detailed model information"""
-        total_params = sum(p.numel() for p in model.parameters())
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        # Move the sequence to the device
+        sequence = sequence.to(device)
 
-        # Memory usage estimation
-        param_size = sum(p.numel() * p.element_size() for p in model.parameters())
-        buffer_size = sum(b.numel() * b.element_size() for b in model.buffers())
+        # Stop training when we hit the num_sequences limit
+        if idx == num_sequences // batch_size:
+            break
 
-        return {
-            "total_parameters": total_params,
-            "trainable_parameters": trainable_params,
-            "parameter_memory_mb": param_size / (1024 * 1024),
-            "buffer_memory_mb": buffer_size / (1024 * 1024),
-            "device": str(next(model.parameters()).device),
-            "dtype": str(next(model.parameters()).dtype),
-        }
+        # changed -> to clear stored gradients from previous iteration of loop
+        optimizer.zero_grad()
+
+        # changed
+        token_logits, hidden_states, attn_inputs = lm(sequence) # token_logit shape: (batch_size, t, vocab_size)
+
+        # remove very last prediction since we cant compute loss
+        logits = token_logits[:, :-1, :] # (batch_size, t-1, vocab_size)
+
+        # remove first actual data since we cant make such prediction
+        targets = sequence[:, 1:] # (batch_size, t-1)
+
+        # flatten to turn both into 2D and 1D vector (googled how to use reshape here)
+        logits = logits.reshape(-1, token_logits.shape[-1])
+        targets = targets.reshape(-1)
+
+        # changed, make sure to check for shape matching ((batch_size * (t - 1)) * (vocab_size) and (batch_size * (t - 1)))
+        loss = loss_fn(logits, targets)
+
+        # changed
+        loss.backward()
+
+        # DO NOT change this - clip gradient norm to avoid exploding gradients
+        nn.utils.clip_grad_norm_(lm.parameters(), max_grad_norm)
+
+        # changed -> updates params given in RNN using Adam's
+        optimizer.step()
+
+        # DO NOT change any of the code below
+        train_batch_loss += loss.detach().cpu().item()
+
+        if idx % val_index == 0:
+            # Calculate train/val loss as normal
+            train_batch_loss = (
+                round(train_batch_loss / val_index, 6)
+                if idx != 0
+                else round(train_batch_loss, 6)
+            )
+
+            # Append to the batch loss and reset to 0
+            train_batch_losses.append(train_batch_loss)
+            train_batch_loss = 0.0
+
+            print(
+                f"Batch: {idx} | Sequence Length: {(sequence.shape[1])} | Elapsed time (minutes): {time_elapsed}"
+            )
+
+            # Append to the validation loss
+            valid_loss = round(validate(lm, valid_data, loss_fn), 6)
+            valid_batch_losses.append(valid_loss)
+
+    print(f"Train Batch Losses: {train_batch_losses}")
+
+    return train_batch_losses, valid_batch_losses
 
 
-def create_optimized_model(config: ModelConfig) -> OptimizedLanguageModel:
-    """Factory function to create an optimized model"""
-    model = OptimizedLanguageModel(config)
-    model = model.to(device)
+@torch.no_grad()
+def validate(lm, dataset, loss_fn):
+    """
+    Args:
+        lm (RNNLanguageModel):
+        dataset (list[Tensor]): Validation dataset
+        loss_fn: PyTorch cross entropy loss function
 
-    # Apply optimizations
-    model = ModelOptimizer.optimize_for_inference(model)
+    Returns:
+        float: Average validation loss
+    """
+    # Set the model to eval mode
+    lm.eval()
 
-    # Print model info
-    info = ModelOptimizer.get_model_info(model)
-    print(f"✓ Model created with {info['total_parameters']:,} parameters")
-    print(f"✓ Memory usage: {info['parameter_memory_mb']:.2f} MB")
-    print(f"✓ Device: {info['device']}, dtype: {info['dtype']}")
+    mean_loss = 0.0
+    num_batches = 1
 
-    return model
+    for i, sequence in enumerate(dataset):
+        if i < num_batches:
+            # Move the sequence to the device
+            sequence = sequence.to(device)
+
+            # TODO: Perform forward pass through the model
+            token_dists, _, _ = lm(sequence)  # (batch_size, t, vocab_size)
+
+            # changed -> Compute loss (Same as in train)
+            targets = sequence[:, 1:]            
+            logits = token_dists[:, :-1, :]    
+
+            logits = logits.reshape(-1, logits.shape[-1])
+            targets = targets.reshape(-1)
+
+            loss = loss_fn(logits, targets)
+
+            # DO NOT change this line
+            mean_loss += loss.detach().cpu().item()
+
+    return mean_loss / num_batches
 
 
-# Example usage and testing
+@torch.no_grad()
+def complete(prefix: str, num_tokens=64, temperature=0.0):
+    """
+    Generates text completion from language model given text prefix.
+    This function has been implemented for you.
+
+    Args:
+        prefix (str):
+        num_tokens (int): Number of new tokens to generate
+        temperature (float): Sampling temperature
+
+    Returns:
+        str: Text completion
+    """
+    lm.eval()
+
+    input = tokenizer.encode(prefix, add_special_tokens=False, return_tensors="pt")
+    input = input.to(device)
+    output = lm.generate(input, max_tokens=num_tokens, temperature=temperature)
+
+    return tokenizer.decode(output)
+
+
 if __name__ == "__main__":
-    # Create model configuration
-    config = ModelConfig(
-        embed_dim=256,
-        hidden_dim=512,
-        vocab_size=10000,
-        num_heads=8,
-        key_dim=64,
-        value_dim=64,
-        max_seq_length=512,
+    import argparse
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--train_data", type=str)
+    parser.add_argument("--val_data", type=str)
+    parser.add_argument("--metrics_out", type=str)
+    parser.add_argument("--train_losses_out", type=str)
+    parser.add_argument("--val_losses_out", type=str)
+    parser.add_argument("--embed_dim", type=int)
+    parser.add_argument("--hidden_dim", type=int)
+    parser.add_argument("--dk", type=int)
+    parser.add_argument("--dv", type=int)
+    parser.add_argument("--num_sequences", type=int)
+    parser.add_argument("--batch_size", type=int, default=1)
+
+    args = parser.parse_args()
+
+    # Load tokenizer
+    tokenizer = AutoTokenizer.from_pretrained("my_tokenizer")
+    vocab_size = tokenizer.vocab_size
+
+    # Initialize LM
+    lm = RNNLanguageModel(
+        embed_dim=args.embed_dim,
+        hidden_dim=args.hidden_dim,
+        vocab_size=vocab_size,
+        key_dim=args.dk,
+        value_dim=args.dv,
+    )
+    lm = lm.to(device)
+
+    print(lm)
+    print(
+        "Number of Parameters: ",
+        sum(p.numel() for p in lm.parameters() if p.requires_grad),
+    )
+    print("Loading data")
+
+    train_data = SentenceDataset(args.train_data)
+
+    valid_data = SentenceDataset(args.val_data)
+
+    train_dataloader = torch.utils.data.DataLoader(
+        train_data, batch_size=args.batch_size, shuffle=False
+    )
+    valid_dataloader = torch.utils.data.DataLoader(
+        valid_data, batch_size=args.batch_size, shuffle=False
     )
 
-    # Create optimized model
-    model = create_optimized_model(config)
+    print("Finished Loading Dataset")
 
-    # Test generation
-    input_ids = torch.randint(0, config.vocab_size, (1, 10), device=device)
+    # Initialize PyTorch cross entropy loss function
+    loss_fn = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(lm.parameters(), lr=1e-3)
 
-    start_time = time.time()
-    generated = model.generate(input_ids, max_new_tokens=50, temperature=0.8)
-    generation_time = time.time() - start_time
+    ### BEGIN: Training Loop
+    start = time.time()
+    train_loss, valid_loss = train(
+        lm,
+        train_dataloader,
+        valid_dataloader,
+        loss_fn,
+        optimizer,
+        args.num_sequences,
+        args.batch_size,
+    )
+    end = time.time()
+    time_taken = end - start
+    ### END: Training Loop
 
-    print(f"✓ Generated {len(generated)} tokens in {generation_time:.3f}s")
-    print(f"✓ Tokens per second: {len(generated) / generation_time:.1f}")
+    results = {
+        "Train Losses": train_loss,
+        "Valid Losses": valid_loss,
+        "Final Train Loss": train_loss[-1],
+        "Final Valid Loss": valid_loss[-1],
+        "Time": time_taken,
+    }
+
+    for key, value in results.items():
+        print(key, value)
+
+    print("Final Train Loss: ", train_loss[-1])
+    print("Final Valid Loss: ", valid_loss[-1])
+
+    # Saves trained model weights
+    torch.save(lm, "model.pt")
+
+    # You can later load back in your model in a separate Python file by running:
+    # >>> from rnn import *
+    # >>> lm = torch.load("model.pt")
+
+    """
+    # Example code for generating text with your LM
+
+    test_str = ["Once upon a time there was a"]
+    
+    for ts in test_str:
+        completion = complete(ts, num_tokens=64, temperature=0.3)
+        print("  Test prefix:", ts)
+        print("  Test output:", completion)
+    """
+
+    # Greedy Sampling(Please comment out when submitting to gradescope)
+    test_strs = ["Once upon a time there was a "]
+    for ts in test_strs:
+        completion = complete(ts, num_tokens=128, temperature=0.0)
+        print("  Test prefix:", ts)
+        print("  Test output:", completion)
+
+    # # Looping through all temperature values for empirical questions
+    # # Please comment out when submitting to gradescope
+    print("----------------")
+    samples_per_setting = 5
+    for temperature in [0, 0.3, 0.8]:
+        for _ in range(samples_per_setting):
+            completion = complete(test_strs[0], num_tokens=128, temperature=temperature)
+            print("  Test prefix:", ts)
+            print("  Test output:", completion)
+            print("----------------")
+
+    # Save your metrics
+    with open(args.train_losses_out, "w") as f:
+        for loss in train_loss:
+            f.write(str(loss) + "\n")
+
+    with open(args.val_losses_out, "w") as f:
+        for loss in valid_loss:
+            f.write(str(loss) + "\n")
+
+    with open(args.metrics_out, "w") as f:
+        f.write("Final Train Loss: " + str(train_loss[-1]) + "\n")
+        f.write("Final Valid Loss: " + str(valid_loss[-1]) + "\n")
+
