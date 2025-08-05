@@ -23,8 +23,7 @@ const SettingsPanel = ({
           <label className="block text-sm font-medium mb-2">Max Tokens</label>
           <input
             type="number"
-            min="50"
-            max="500"
+            min="1"
             value={settings.maxTokens}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
               setSettings((prev) => ({

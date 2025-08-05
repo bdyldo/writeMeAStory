@@ -587,7 +587,7 @@ if __name__ == "__main__":
         embed_dim=args.embed_dim,
         hidden_dim=args.hidden_dim,
         vocab_size=vocab_size,
-        num_head=args.num_head,  # Add this line
+        num_head=args.num_head, 
         key_dim=args.dk,
         value_dim=args.dv,
     )

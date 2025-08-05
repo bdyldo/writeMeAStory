@@ -11,7 +11,7 @@ app = FastAPI()
 # ! This allows specific origins / methods / headers to access backend API.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:5173"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -20,4 +20,5 @@ app.add_middleware(
 socket_app = socketio.ASGIApp(sio, app)
 
 if __name__ == "__main__":
+    # Run the application using Uvicorn server using localhost and port 8000
     uvicorn.run("app.main:socket_app", host="0.0.0.0", port=8000, reload=True)

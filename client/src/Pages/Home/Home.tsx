@@ -75,12 +75,13 @@ const HomePage = () => {
     setIsGenerating(true);
     setStory("");
 
-    if (settings.streamResponse && isConnected && socketRef.current) {
+    if (isConnected && socketRef.current) {
       // WebSocket streaming
       emit("generate_story", {
         prompt: prompt.trim(),
         max_tokens: settings.maxTokens,
         temperature: settings.temperature,
+        stream: settings.streamResponse
       });
     } else {
       // HTTP fallback (backup, may delete)

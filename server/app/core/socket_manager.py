@@ -33,13 +33,24 @@ async def generate_story(sid, data):
     prompt = data.get("prompt", "")
     max_tokens = data.get("max_tokens", 200)
     temperature = data.get("temperature", 0.7)
+    stream = data.get("stream", True)
 
     # ! Uses async for to yield tokens as they’re generated, not waiting for the whole story
-    async for token in story_generator.generate_story_stream(
-        prompt, max_tokens, temperature
-    ):
-        # Emit each token back to the client, sent through each 'story_token' event
-        await sio.emit("story_token", {"content": token}, room=sid)
+    if stream:
+        async for token in story_generator.generate_story_stream(
+            prompt, max_tokens, temperature
+        ):
+            # Emit each token back to the client, sent through each 'story_token' event
+            await sio.emit("story_token", {"content": token}, room=sid)
+    else:
+        # Collect all tokens from the async generator into a full text
+        tokens = []
+        async for token in story_generator.generate_story_stream(
+            prompt, max_tokens, temperature
+        ):
+            tokens.append(token)
+        generated_text = ''.join(tokens)
+        await sio.emit("story_token", {"content": generated_text}, room=sid)
 
     # Finished generation, emit 'story_complete' event
     await sio.emit("story_complete", {}, room=sid)
