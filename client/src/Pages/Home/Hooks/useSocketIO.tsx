@@ -14,7 +14,9 @@ interface UseSocketIOReturn {
 }
 
 let ServerUrl: string | undefined = "http://localhost:8000"; // Default server URL for Dev
-if (import.meta.env.STAGE === "PROD"){
+
+// import.meta.env.PROD = true when you run npm run build
+if (import.meta.env.PROD){
   ServerUrl = undefined; // This makes Socket.IO connect to current domain
 }
 else{
