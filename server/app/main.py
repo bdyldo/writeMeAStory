@@ -27,7 +27,7 @@ server_dir = Path(__file__).parent.parent  # Go up to server/
 frontend_dist_path = server_dir.parent / "client" / "dist"
 
 # Serve built frontend in production
-if environment == "production" and frontend_dist_path.exists():
+if environment == "PROD" and frontend_dist_path.exists():
     print("🚀 Production mode: Serving frontend from backend")
 
     # Mount static assets (CSS, JS, images)
