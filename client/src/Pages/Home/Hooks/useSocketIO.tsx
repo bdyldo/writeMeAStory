@@ -13,9 +13,11 @@ interface UseSocketIOReturn {
   isConnected: boolean;
 }
 
-//
+// import.meta.env.VITE allows loading environment variables in Vite frontend
+const ServerUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+
 const useSocketIO = (
-  serverUrl: string = "http://localhost:8000"
+  serverUrl: string = ServerUrl
 ): UseSocketIOReturn => {
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("Disconnected");
