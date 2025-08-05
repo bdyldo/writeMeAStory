@@ -8,7 +8,7 @@ import type {
 
 interface UseSocketIOReturn {
   connectionStatus: ConnectionStatus;
-  socketRef: React.MutableRefObject<Socket | null>;
+  socketRef: React.RefObject<Socket | null>;
   emit: (event: string, data: any) => void;
   isConnected: boolean;
 }
