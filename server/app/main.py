@@ -4,16 +4,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import socketio
-from app.core.socket_manager import sio
-import uvicorn
 from dotenv import load_dotenv
 import os
 from pathlib import Path
 
+# Load environment variables 
+load_dotenv()
+
+# socket_manager depends on dotenv()
+from app.core.socket_manager import sio
+import uvicorn
+
 # initialize FastAPI application
 app = FastAPI()
-
-load_dotenv()
 
 host = os.getenv("HOST", "0.0.0.0")
 port = int(os.getenv("PORT", 10000))
