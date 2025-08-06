@@ -55,7 +55,7 @@ if environment == "PROD" and frontend_dist_path.exists():
             "frontend_exists": frontend_dist_path.exists(),
         }
 
-    @app.get("/{path:path}")
+    @app.api_route("/{path:path}", methods=["GET", "HEAD"])
     async def serve_frontend(path: str = ""):
         # Excludes requests that start with "api/", "socket.io/", or OpenAPI docs routes to avoid overriding backend routes.
         if path.startswith(("api/", "socket.io/", "docs", "redoc", "openapi.json")):
