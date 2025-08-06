@@ -5,11 +5,12 @@ Deploy with: modal deploy modal_app.py
 
 import modal
 from pathlib import Path
+from app.schemas.story import StoryRequest, StoryResponse
 
 # Modal configuration
 app = modal.App("story-generator")
 
-# Create a custom image with your dependencies
+# Create a custom Docker-Like environment with dependencies
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install([
@@ -20,15 +21,17 @@ image = (
     ])
 )
 
-# Mount your model files to Modal
+# Create a cloud based file system inside Modal to attach files needed GPU instances 
 MODEL_VOLUME = modal.Volume.from_name("story-model", create_if_missing=True)
 
+# Define a class-based deployment container that runs on a GPU with Transformer model and dependencies
 @app.cls(
     image=image,
     gpu=modal.gpu.A10G(),  # Use A10G GPU - good balance of performance/cost
     volumes={"/model": MODEL_VOLUME},
-    container_idle_timeout=300,  # Keep container warm for 5 minutes
+    container_idle_timeout=300,  # Keep container warm for 300 seconds
 )
+
 class StoryGenerator:
     
     def __init__(self):
@@ -47,21 +50,11 @@ class StoryGenerator:
             for file in files:
                 print(os.path.join(root, file))
         
-        # Try different possible paths for the transformer file
-        possible_paths = [
-            "/model/app/model/transformer.py",
-            "/model/transformer.py", 
-            "/model/app.model.transformer.py"
-        ]
+        # Load transformer
+        transformer_path = "/model/transformer.py"
         
-        transformer_path = None
-        for path in possible_paths:
-            if os.path.exists(path):
-                transformer_path = path
-                break
-                
         if not transformer_path:
-            raise FileNotFoundError(f"Could not find transformer.py in any of: {possible_paths}")
+            raise FileNotFoundError(f"Could not find transformer.py")
             
         print(f"Loading transformer from: {transformer_path}")
         
@@ -81,7 +74,7 @@ class StoryGenerator:
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_path))
         
-        # Create model with same parameters as your training
+        # Create model with same parameters as training
         self.model = RNNLanguageModel(
             embed_dim=512, 
             hidden_dim=768,  
@@ -117,59 +110,36 @@ class StoryGenerator:
                 )
 
             generated_text = self.tokenizer.decode(output_tokens, skip_special_tokens=True)
-            return {
-                "success": True,
-                "generated_text": generated_text,
-                "tokens_generated": len(output_tokens)
-            }
+            return StoryResponse(
+                success=True,
+                generated_text=generated_text,
+                tokens_generated=len(output_tokens)
+            )
             
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "generated_text": ""
-            }
+            return StoryResponse(
+                success=False,
+                error=str(e),
+                generated_text=""
+            )
 
-# Expose the model as a web endpoint
-'''@app.function(
-    image=image,
-    schedule=modal.Cron("0 8 * * *"),  # Optional: warm up daily at 8 AM
-)
-def keep_warm():
-    """Optional function to keep the model warm"""
-    generator = StoryGenerator()
-    result = generator.generate_tokens.local("Hello", max_tokens=5, temperature=0.5)
-    print(f"Warmup result: {result}")'''
-
-# Create a singleton instance
+# Create a StoryGenerator instance
 story_generator = StoryGenerator()
 
-# Web endpoint for easy access
+# Setting up the web endpoint for Modal to call using HTTP
 @app.function(image=image)
 @modal.web_endpoint(method="POST")
-def generate_story_endpoint(request_data: dict):
+def generate_story_endpoint(request: StoryRequest) -> StoryResponse:
     """
     Web endpoint for story generation
     POST body: {"prompt": "Once upon a time", "max_tokens": 100, "temperature": 0.7}
     """
-    prompt = request_data.get("prompt", "")
-    max_tokens = request_data.get("max_tokens", 100)
-    temperature = request_data.get("temperature", 0.7)
+    if not request.prompt:
+        return StoryResponse(success=False, error="No prompt provided", generated_text="")
     
-    if not prompt:
-        return {"success": False, "error": "No prompt provided"}
-    
-    result = story_generator.generate_tokens.remote(prompt, max_tokens, temperature)
+    result = story_generator.generate_tokens.remote(
+        request.prompt, 
+        request.max_tokens, 
+        request.temperature
+    )
     return result
-
-if __name__ == "__main__":
-    # For local testing
-    print("Testing Modal app locally...")
-    with app.run():
-        generator = StoryGenerator()
-        result = generator.generate_tokens.local(
-            "Once upon a time there was a", 
-            max_tokens=50, 
-            temperature=0.7
-        )
-        print(f"Result: {result}")

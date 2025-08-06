@@ -50,7 +50,8 @@ def upload_model_files():
         f"modal volume put --force story-model {tokenizer_path} tokenizer",
         f"modal volume put --force story-model app/model/transformer.py app/model/transformer.py",
         f"modal volume put --force story-model app/model/__init__.py app/model/__init__.py", 
-        f"modal volume put --force story-model app/__init__.py app/__init__.py"
+        f"modal volume put --force story-model app/__init__.py app/__init__.py",
+        f"modal volume put --force story-model app/schemas app/schemas"
     ]
     
     # Create volume first

@@ -6,6 +6,7 @@ import aiohttp
 import modal
 import os
 from typing import AsyncGenerator
+from app.schemas.story import StoryRequest, StoryResponse
 
 
 class ModalStoryGenerator:
@@ -24,7 +25,7 @@ class ModalStoryGenerator:
             self.use_client = False
 
     async def _call_modal_client(self, prompt: str, max_tokens: int, temperature: float):
-        """Call Modal using the Python client (requires Modal token)"""
+        """Call Modal using the Python client (Fall back for HTTP))"""
         try:
             # Import Modal client
             app = modal.App.lookup(self.modal_app_name)
@@ -47,11 +48,13 @@ class ModalStoryGenerator:
     async def _call_modal_http(self, prompt: str, max_tokens: int, temperature: float):
         """Call Modal using HTTP endpoint"""
         try:
-            payload = {
-                "prompt": prompt,
-                "max_tokens": max_tokens,
-                "temperature": temperature
-            }
+            # Use Pydantic model for type safety
+            request = StoryRequest(
+                prompt=prompt,
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
+            payload = request.model_dump()
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -70,6 +73,7 @@ class ModalStoryGenerator:
                             "generated_text": ""
                         }
                         
+        # If exceeded 60 seconds for the request, we just abort it
         except asyncio.TimeoutError:
             return {
                 "success": False,
@@ -86,7 +90,7 @@ class ModalStoryGenerator:
     async def generate_story_stream(self, prompt: str, max_tokens: int, temperature: float) -> AsyncGenerator[str, None]:
         """
         Generate story with streaming simulation
-        This maintains the same interface as your original StoryGenerator
+        This maintains the same interface as original StoryGenerator
         """
         try:
             print(f"🚀 Calling Modal for generation: prompt='{prompt[:50]}...', max_tokens={max_tokens}, temp={temperature}")
@@ -112,7 +116,7 @@ class ModalStoryGenerator:
                 else:
                     yield " " + word
                 
-                # Same delay as original
+                # Delay text generation for streaming
                 await asyncio.sleep(0.05)
                 
         except Exception as e:
