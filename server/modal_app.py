@@ -131,7 +131,7 @@ class StoryGenerator:
             }
 
 # Expose the model as a web endpoint
-@app.function(
+'''@app.function(
     image=image,
     schedule=modal.Cron("0 8 * * *"),  # Optional: warm up daily at 8 AM
 )
@@ -139,7 +139,7 @@ def keep_warm():
     """Optional function to keep the model warm"""
     generator = StoryGenerator()
     result = generator.generate_tokens.local("Hello", max_tokens=5, temperature=0.5)
-    print(f"Warmup result: {result}")
+    print(f"Warmup result: {result}")'''
 
 # Create a singleton instance
 story_generator = StoryGenerator()

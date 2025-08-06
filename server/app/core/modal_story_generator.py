@@ -1,7 +1,6 @@
 """
 Modal-enabled story generator that calls GPU inference remotely
 """
-
 import asyncio
 import aiohttp
 import modal
