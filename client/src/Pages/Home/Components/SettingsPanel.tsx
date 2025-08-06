@@ -36,7 +36,7 @@ const SettingsPanel = ({
         </div>
         <div>
           <label className="block text-sm font-medium mb-2">
-            Temperature ({settings.temperature})
+            Spiciness ({settings.temperature})
           </label>
           <input
             type="range"

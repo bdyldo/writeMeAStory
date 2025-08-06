@@ -9,7 +9,7 @@ import type {
 interface UseSocketIOReturn {
   connectionStatus: ConnectionStatus;
   socketRef: React.RefObject<Socket | null>;
-  emit: (event: string, data: any) => void;
+  emit: (event: keyof ClientToServerEvents, data: any) => void;
   isConnected: boolean;
 }
 
@@ -101,10 +101,10 @@ const useSocketIO = (
   };
 
   // Safe emit function with connection check
-  const emit = (event: string, data: any): void => {
+  const emit = (event: keyof ClientToServerEvents, data: any): void => {
     if (socketRef.current?.connected) {
       console.log(`📤 Emitting ${event}:`, data);
-      socketRef.current.emit(event as any, data);
+      socketRef.current.emit(event, data);
     } else {
       console.error(`❌ Cannot emit ${event} - socket not connected`);
     }
