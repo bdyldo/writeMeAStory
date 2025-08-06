@@ -6,7 +6,6 @@ import aiohttp
 import modal
 import os
 from typing import AsyncGenerator
-from app.schemas.story import StoryRequest, StoryResponse
 
 
 class ModalStoryGenerator:
@@ -48,13 +47,11 @@ class ModalStoryGenerator:
     async def _call_modal_http(self, prompt: str, max_tokens: int, temperature: float):
         """Call Modal using HTTP endpoint"""
         try:
-            # Use Pydantic model for type safety
-            request = StoryRequest(
-                prompt=prompt,
-                max_tokens=max_tokens,
-                temperature=temperature
-            )
-            payload = request.model_dump()
+            payload = {
+                "prompt": prompt,
+                "max_tokens": max_tokens,
+                "temperature": temperature
+            }
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(
