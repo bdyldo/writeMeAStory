@@ -4,3 +4,8 @@ dist/
 .DS_Store         
 *.log              
 .vite/         
+server/MODAL_SETUP.md
+
+__pycache__/
+*.pyc
+*.pt
