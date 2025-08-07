@@ -34,7 +34,8 @@ frontend_dist_path = server_dir.parent / "client" / "dist"
 if environment == "PROD" and frontend_dist_path.exists():
     print("🚀 Production mode: Serving frontend from backend")
 
-    # Mount static assets (CSS, JS, images)
+    # StaticFiles mount static assets to browser from a directory on disk via HTTP
+    # This serving must always happen without controls that can be given when using FileResponse
     app.mount(
         "/assets",
         StaticFiles(directory=str(frontend_dist_path / "assets")),
@@ -68,6 +69,8 @@ if environment == "PROD" and frontend_dist_path.exists():
         # Serve index.html for all other routes to enable client-side routing
         index_file = frontend_dist_path / "index.html"
         if index_file.exists():
+            # Sends a single specific file as the HTTP response. For serving one file, not a whole folder.
+            # Can be dynamically returned under different conditions, better than StaticFiles
             return FileResponse(str(index_file))
         else:
             return {"error": "Frontend not built", "path": str(frontend_dist_path)}
