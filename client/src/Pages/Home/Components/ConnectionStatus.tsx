@@ -16,7 +16,7 @@ const ConnectionStatusIndicator = ({ status }: ConnectionStatusProps) => (
     }`}
   >
     <div
-      className={`w-2 h-2 rounded-full ${
+      className={`w-2 h-2 mr-0.5 rounded-full ${
         status === "Connected"
           ? "bg-green-400"
           : status === "Error"

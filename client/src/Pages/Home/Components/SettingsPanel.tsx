@@ -20,7 +20,7 @@ const SettingsPanel = ({
       <h3 className="text-lg font-semibold mb-4">Generation Settings</h3>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
-          <label className="block text-sm font-medium mb-2">Max Tokens</label>
+          <label className="block text-sm font-medium mb-2">Number of Token in Story</label>
           <input
             type="number"
             min="1"
@@ -36,7 +36,7 @@ const SettingsPanel = ({
         </div>
         <div>
           <label className="block text-sm font-medium mb-2">
-            Spiciness ({settings.temperature})
+            Story Spiciness ({settings.temperature})
           </label>
           <input
             type="range"
