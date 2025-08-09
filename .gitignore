@@ -9,3 +9,4 @@ server/MODAL_SETUP.md
 __pycache__/
 *.pyc
 *.pt
+.github/SETUP.md
