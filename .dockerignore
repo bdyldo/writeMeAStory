@@ -1,0 +1,61 @@
+# Git
+.git
+.gitignore
+
+# Docker
+DockerFile*
+docker-compose*
+.dockerignore
+
+# Documentation
+*.md
+README*
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node.js
+client/node_modules
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+client/dist
+*.tsbuildinfo
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage
+.pytest_cache
+.venv
+.env
+
+# ML/AI specific
+*.pt.bak
+*.ckpt
+wandb/
+.wandb/
+
+# Logs
+*.log
+logs/
+
+# Temp files
+tmp/
+temp/
+.tmp/

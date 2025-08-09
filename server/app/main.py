@@ -13,7 +13,7 @@ load_dotenv()
 
 # ! socket_manager depends on dotenv()
 # import socketio server instance, which is either cpu based or wrapped using gpu cloud app Modal
-from app.core.socket_manager import sio
+from .core.socket_manager import sio
 import uvicorn
 
 # initialize FastAPI application

@@ -1,0 +1,53 @@
+services:
+  # Development environment
+  app-dev:
+    build:
+      context: .
+      dockerfile: DockerFile
+      target: development
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source code for hot reload
+      - ./server:/app/server
+      - ./common:/app/common
+      # Preserve node_modules and Python cache
+      - app-node-modules:/app/client/node_modules
+      - app-python-cache:/app/.venv
+    environment:
+      - STAGE=DEV
+      - USE_MODAL=false
+    profiles:
+      - dev
+
+  # Test environment
+  app-test:
+    build:
+      context: .
+      dockerfile: DockerFile
+      target: test
+    volumes:
+      - ./server:/app/server
+      - ./common:/app/common
+    environment:
+      - STAGE=TEST
+    profiles:
+      - test
+
+  # Production environment (for local testing)
+  app-prod:
+    build:
+      context: .
+      dockerfile: DockerFile
+      target: production
+    ports:
+      - "8000:8000"
+    environment:
+      - STAGE=PROD
+      - USE_MODAL=true
+    profiles:
+      - prod
+
+volumes:
+  app-node-modules:
+  app-python-cache:

@@ -2,7 +2,7 @@ import torch
 import asyncio
 from transformers import AutoTokenizer
 from pathlib import Path
-from app.model.transformer import RNNLanguageModel
+from ..model.transformer import RNNLanguageModel
 
 
 class StoryGenerator:
