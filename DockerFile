@@ -118,8 +118,8 @@ ENV PORT=8000
 # Expose port for development
 EXPOSE 8000
 
-# Development command with hot reload
-CMD ["python", "-m", "uvicorn", "server.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Development command with hot reload - use the same approach that works locally
+CMD ["python", "-m", "server.app.main"]
 
 # =============================================================================
 # Stage 6: Production Environment
@@ -161,5 +161,5 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 # Expose port
 EXPOSE 8000
 
-# Production command
-CMD ["python", "-m", "uvicorn", "server.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# Production command - use the same approach that works locally
+CMD ["python", "-m", "server.app.main"]

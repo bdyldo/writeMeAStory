@@ -43,11 +43,8 @@ services:
       target: production
     ports:
       - "8000:8000"
-    environment:
-      - STAGE=PROD
-      - USE_MODAL=true
-      - PORT=8000
-      - HOST=0.0.0.0
+    env_file:
+      - server/.env
     profiles:
       - prod
 

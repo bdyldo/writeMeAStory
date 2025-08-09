@@ -18,17 +18,6 @@ let ServerUrl: string | undefined = "http://localhost:8000"; // Default server U
 // import.meta.env.PROD = true when you run npm run build
 if (import.meta.env.PROD) {
   ServerUrl = undefined; // This makes Socket.IO connect to current domain
-  // Check if we're running in Docker (localhost) vs real production (undefined for same-origin)
-  if (
-    window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1"
-  ) {
-    ServerUrl = `http://${window.location.hostname}:${
-      window.location.port || "8000"
-    }`;
-  } else {
-    ServerUrl = undefined; // This makes Socket.IO connect to current domain for real production
-  }
 } else {
   ServerUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 }
@@ -59,7 +48,7 @@ const useSocketIO = (
         reconnectionDelayMax: 5000, // Max wait time between attempts
         reconnectionAttempts: 5, // Try 5 times then give up
         timeout: 20000, // Connection timeout
-        transports: ["websocket", "polling"], // Fallback transports
+        transports: ["polling", "websocket"], // Force polling first, then websocket
       });
 
       // ✅ CONNECTION EVENTS, emitted by server

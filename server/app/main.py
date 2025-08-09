@@ -100,5 +100,5 @@ socket_app = socketio.ASGIApp(sio, app)
 if __name__ == "__main__":
     # Run the application using Uvicorn server using host
     uvicorn.run(
-        "app.main:socket_app", host=host, port=port, reload=(environment != "PROD")
+        "server.app.main:socket_app", host=host, port=port, reload=(environment != "PROD")
     )
