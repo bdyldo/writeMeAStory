@@ -17,6 +17,7 @@ services:
     environment:
       - STAGE=DEV
       - USE_MODAL=false
+      - PORT=8000
     profiles:
       - dev
 
@@ -45,6 +46,8 @@ services:
     environment:
       - STAGE=PROD
       - USE_MODAL=true
+      - PORT=8000
+      - HOST=0.0.0.0
     profiles:
       - prod
 

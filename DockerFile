@@ -113,6 +113,7 @@ COPY common/ ./common/
 # Set environment variables for development
 ENV STAGE=DEV
 ENV PYTHONPATH=/app
+ENV PORT=8000
 
 # Expose port for development
 EXPOSE 8000
@@ -147,6 +148,7 @@ COPY common/ ./common/
 ENV STAGE=PROD
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
 
 # Change ownership to non-root user
 RUN chown -R appuser:appuser /app

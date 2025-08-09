@@ -16,10 +16,20 @@ interface UseSocketIOReturn {
 let ServerUrl: string | undefined = "http://localhost:8000"; // Default server URL for Dev
 
 // import.meta.env.PROD = true when you run npm run build
-if (import.meta.env.PROD){
+if (import.meta.env.PROD) {
   ServerUrl = undefined; // This makes Socket.IO connect to current domain
-}
-else{
+  // Check if we're running in Docker (localhost) vs real production (undefined for same-origin)
+  if (
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1"
+  ) {
+    ServerUrl = `http://${window.location.hostname}:${
+      window.location.port || "8000"
+    }`;
+  } else {
+    ServerUrl = undefined; // This makes Socket.IO connect to current domain for real production
+  }
+} else {
   ServerUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 }
 
