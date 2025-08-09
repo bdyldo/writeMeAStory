@@ -194,7 +194,7 @@ jobs:
         id: image
         run: echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" >> $GITHUB_OUTPUT
 
-  # Job 5: Model Validation (Optional but Impressive)
+  # Job 5: Model Validation 
   validate-model:
     name: ML Model Validation
     runs-on: ubuntu-latest
