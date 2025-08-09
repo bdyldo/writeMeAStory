@@ -48,7 +48,7 @@ const useSocketIO = (
         reconnectionDelayMax: 5000, // Max wait time between attempts
         reconnectionAttempts: 5, // Try 5 times then give up
         timeout: 20000, // Connection timeout
-        transports: ["polling", "websocket"], // Force polling first, then websocket
+        transports: ["websocket","polling"]
       });
 
       // ✅ CONNECTION EVENTS, emitted by server
