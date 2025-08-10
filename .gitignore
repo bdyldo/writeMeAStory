@@ -10,3 +10,5 @@ __pycache__/
 *.pyc
 *.pt
 .github/SETUP.md
+
+DockerFile

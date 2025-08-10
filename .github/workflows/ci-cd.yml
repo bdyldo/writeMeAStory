@@ -78,6 +78,7 @@ jobs:
     name: Build, Test & Push
     runs-on: ubuntu-latest
     needs: lint
+    # Only run on master and feat/* branches when push occurs
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/feat/'))
     
     outputs:
@@ -185,6 +186,7 @@ jobs:
     name: ML Model Validation
     runs-on: ubuntu-latest
     needs: build-test-push
+    # Only run on master branch when push/merge PR occurs
     if: github.ref == 'refs/heads/master'
     
     steps:
@@ -223,6 +225,7 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: [build-test-push, validate-model]
+    # Only run on master branch when push/merge PR occurs
     if: github.ref == 'refs/heads/master'
     environment: production
     
@@ -261,7 +264,7 @@ jobs:
           echo "🚀 Successfully deployed to production!"
           echo "📊 Image: ${{ needs.build-test-push.outputs.image }}@${{ needs.build-test-push.outputs.digest }}"
 
-  # Job 7: Cleanup on failure
+  # Job 6: Cleanup on failure
   cleanup:
     name: Cleanup on Failure
     runs-on: ubuntu-latest
