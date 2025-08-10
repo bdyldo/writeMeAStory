@@ -12,6 +12,7 @@ class StoryGenerator:
         tokenizer_path = server_dir / "app" / "model" / "tokenizer"
 
         import torch
+
         device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Using device: {device}")
         print(f"Loading model from: {model_path}")
@@ -46,6 +47,7 @@ class StoryGenerator:
             input_ids = input_ids.to(next(self.model.parameters()).device)
 
             import torch
+
             with torch.no_grad():
                 output_tokens = self.model.generate(
                     input_ids, max_tokens=max_tokens, temperature=temperature
