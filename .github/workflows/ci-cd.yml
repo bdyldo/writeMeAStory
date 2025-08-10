@@ -101,22 +101,17 @@ jobs:
       - name: Test production build
         if: matrix.target == 'production'
         run: |
-          # Start the container in detached mode
-          docker run -d --name test-prod \
-            -p 8000:8000 \
-            -e STAGE=PROD \
-            -e USE_MODAL=false \
-            story-generator:production
+          # Use your exact docker-compose setup that works locally
+          docker-compose --profile prod up -d
           
           # Wait for startup
-          sleep 10
+          sleep 15
           
           # Health check
           curl -f http://localhost:8000/api/health || exit 1
           
           # Cleanup
-          docker stop test-prod
-          docker rm test-prod
+          docker-compose --profile prod down
 
   # Job 3: Security Scanning
   security:
