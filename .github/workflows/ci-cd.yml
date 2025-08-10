@@ -100,7 +100,7 @@ jobs:
       - name: Test production build
         run: |
           # Use your exact docker-compose setup that works locally
-          docker-compose --profile prod up -d
+          docker compose --profile prod up -d
           
           # Wait for startup
           sleep 15
@@ -109,7 +109,7 @@ jobs:
           curl -f http://localhost:8000/api/health || exit 1
           
           # Cleanup
-          docker-compose --profile prod down
+          docker compose --profile prod down
 
   # Job 3: Security Scanning (Basic)
   security:
