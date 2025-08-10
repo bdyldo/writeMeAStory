@@ -99,6 +99,9 @@ jobs:
 
       - name: Test production build
         run: |
+          # Create .env file from GitHub secrets
+          echo "${{ secrets.DOT_ENV }}" > server/.env
+          
           # Use your exact docker-compose setup that works locally
           docker compose --profile prod up -d
           
