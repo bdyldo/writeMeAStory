@@ -1,0 +1,148 @@
+# Optimized Docker build for Story Generator
+# Removes PyTorch/transformers dependencies and frontend build process
+# Reduces image size from ~4GB to ~500MB
+
+# =============================================================================
+# Stage 1: Python Dependencies (Optimized)
+# =============================================================================
+FROM python:3.12-slim AS python-deps
+
+WORKDIR /app
+
+# Install minimal system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+RUN pip install poetry==2.0.1
+
+# Copy optimized Poetry configuration (without PyTorch/transformers)
+COPY server/pyproject.docker.toml ./pyproject.toml
+COPY server/poetry.lock ./poetry.lock
+
+# Configure poetry and install minimal dependencies
+RUN poetry config virtualenvs.create true \
+    && poetry config virtualenvs.in-project true \
+    && poetry install --no-root --no-dev
+
+# =============================================================================
+# Stage 2: Test Environment (Optimized)
+# =============================================================================
+FROM python:3.12-slim AS test
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy virtual environment from python-deps stage
+COPY --from=python-deps /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Install test dependencies
+RUN pip install pytest pytest-asyncio pytest-benchmark
+
+# Copy application code (without model files that require PyTorch)
+COPY server/app/ ./server/app/
+COPY server/tests/ ./server/tests/
+COPY common/ ./common/
+
+# Create empty model directory to prevent import errors
+RUN mkdir -p ./server/app/model
+
+# Run tests
+CMD ["python", "-m", "pytest", "server/tests/", "-v"]
+
+# =============================================================================
+# Stage 3: Development Environment (Optimized)
+# =============================================================================
+FROM python:3.12-slim AS development
+
+WORKDIR /app
+
+# Install system dependencies including dev tools
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    vim \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy virtual environment
+COPY --from=python-deps /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Install additional dev dependencies
+RUN pip install pytest pytest-asyncio ipython black isort
+
+# Copy application code
+COPY server/ ./server/
+# Copy pre-built frontend dist folder (no build required)
+COPY client/dist ./client/dist
+COPY common/ ./common/
+
+# Create empty model directory (not needed for Modal-based inference)
+RUN mkdir -p ./server/app/model
+
+# Set environment variables for development
+ENV STAGE=DEV
+ENV PYTHONPATH=/app
+ENV PORT=8000
+ENV USE_MODAL=true
+
+# Expose port for development
+EXPOSE 8000
+
+# Development command
+CMD ["python", "-m", "server.app.main"]
+
+# =============================================================================
+# Stage 4: Production Environment (Ultra-Optimized)
+# =============================================================================
+FROM python:3.12-slim AS production
+
+WORKDIR /app
+
+# Install only runtime system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r appuser && useradd -r -g appuser appuser
+
+# Copy virtual environment from python-deps stage
+COPY --from=python-deps /app/.venv /app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Copy application code
+COPY server/ ./server/
+# Copy pre-built frontend dist folder (no build required)
+COPY client/dist ./client/dist
+COPY common/ ./common/
+
+# Create empty model directory (not needed for Modal-based inference)
+RUN mkdir -p ./server/app/model
+
+# Set production environment variables
+ENV STAGE=PROD
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
+ENV USE_MODAL=true
+
+# Change ownership to non-root user
+RUN chown -R appuser:appuser /app
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/health || exit 1
+
+# Expose port
+EXPOSE 8000
+
+# Production command
+CMD ["python", "-m", "server.app.main"]

@@ -39,7 +39,7 @@ services:
   app-prod:
     build:
       context: .
-      dockerfile: DockerFile
+      dockerfile: DockerFile.optimized
       target: production
     ports:
       - "8000:8000"
