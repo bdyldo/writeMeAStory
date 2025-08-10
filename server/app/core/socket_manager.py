@@ -57,7 +57,7 @@ async def generate_story(sid, data):
             prompt, max_tokens, temperature
         ):
             tokens.append(token)
-        generated_text = ''.join(tokens)
+        generated_text = "".join(tokens)
         await sio.emit("story_token", {"content": generated_text}, room=sid)
 
     # Finished generation, emit 'story_complete' event

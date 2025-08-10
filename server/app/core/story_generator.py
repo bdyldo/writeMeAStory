@@ -22,12 +22,12 @@ class StoryGenerator:
         # Create model instance with same parameters as training
         # ! # Must match training exactly
         self.model = RNNLanguageModel(
-            embed_dim=512, 
-            hidden_dim=768,  
+            embed_dim=512,
+            hidden_dim=768,
             vocab_size=self.tokenizer.vocab_size,
-            num_head=6,  
-            key_dim=128,  
-            value_dim=128,  
+            num_head=6,
+            key_dim=128,
+            value_dim=128,
         )
 
         # Load the saved state dictionary
@@ -50,8 +50,10 @@ class StoryGenerator:
                     input_ids, max_tokens=max_tokens, temperature=temperature
                 )
 
-            generated_text = self.tokenizer.decode(output_tokens, skip_special_tokens=True)
-            
+            generated_text = self.tokenizer.decode(
+                output_tokens, skip_special_tokens=True
+            )
+
             # Now stream it character by character or word by word for UI effect
             words = generated_text.split()
             for i, word in enumerate(words):
@@ -59,8 +61,8 @@ class StoryGenerator:
                     yield word
                 else:
                     yield " " + word  # Proper spacing
-                
-                await asyncio.sleep(0.05) 
+
+                await asyncio.sleep(0.05)
 
         except Exception as e:
             print(f"❌ Generation error: {e}")

@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 import os
 from pathlib import Path
 
-# Load environment variables 
+# Load environment variables
 load_dotenv()
 
 # ! socket_manager depends on dotenv()
@@ -99,19 +99,17 @@ socket_app = socketio.ASGIApp(sio, app)
 
 if __name__ == "__main__":
     # Dynamically determine the correct import path based on execution context
-    # When run from server/ directory: use "app.main:socket_app"  
+    # When run from server/ directory: use "app.main:socket_app"
     # When run from root/ directory (Docker): use "server.app.main:socket_app"
     import sys
     import os
-    
+
     # Check if we're running from the server directory or root directory
     current_dir = os.getcwd()
-    if current_dir.endswith('/server') or 'server' not in sys.modules:
+    if current_dir.endswith("/server") or "server" not in sys.modules:
         app_path = "app.main:socket_app"  # Local execution from server/
     else:
         app_path = "server.app.main:socket_app"  # Docker execution from root/
-    
+
     # Run the application using Uvicorn server using host
-    uvicorn.run(
-        app_path, host=host, port=port, reload=(environment != "PROD")
-    )
+    uvicorn.run(app_path, host=host, port=port, reload=(environment != "PROD"))
