@@ -25,7 +25,7 @@ COPY server/poetry.lock ./poetry.lock
 # Configure poetry and install minimal dependencies
 RUN poetry config virtualenvs.create true \
     && poetry config virtualenvs.in-project true \
-    && poetry install --no-root --no-dev
+    && poetry install --no-root 
 
 # =============================================================================
 # Stage 2: Test Environment (Optimized)
