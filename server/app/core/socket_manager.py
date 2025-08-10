@@ -1,8 +1,6 @@
 import socketio
 import asyncio
 import os
-from .story_generator import StoryGenerator
-from .modal_story_generator import ModalStoryGenerator
 
 # AsyncServer Enables async support, necessary for non-blocking operations like model inference and streaming
 # async_mode='asgi': Integrates with ASGI apps
@@ -12,9 +10,13 @@ sio = socketio.AsyncServer(cors_allowed_origins="*", async_mode="asgi")
 USE_MODAL = os.getenv("USE_MODAL", "false").lower() == "true"
 if USE_MODAL:
     print("🚀 Using Modal GPU for story generation")
+    from .modal_story_generator import ModalStoryGenerator
+
     story_generator = ModalStoryGenerator()
 else:
     print("💻 Using local model for story generation")
+    from .story_generator import StoryGenerator
+
     story_generator = StoryGenerator()
 
 # Socket.IO event handlers
@@ -57,7 +59,7 @@ async def generate_story(sid, data):
             prompt, max_tokens, temperature
         ):
             tokens.append(token)
-        generated_text = ''.join(tokens)
+        generated_text = "".join(tokens)
         await sio.emit("story_token", {"content": generated_text}, room=sid)
 
     # Finished generation, emit 'story_complete' event

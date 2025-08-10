@@ -1,8 +1,7 @@
-import torch
 import asyncio
 from transformers import AutoTokenizer
 from pathlib import Path
-from app.model.transformer import RNNLanguageModel
+from ..model.transformer import RNNLanguageModel
 
 
 class StoryGenerator:
@@ -11,6 +10,8 @@ class StoryGenerator:
         server_dir = current_file.parent.parent.parent
         model_path = server_dir / "app" / "model" / "model.pt"
         tokenizer_path = server_dir / "app" / "model" / "tokenizer"
+
+        import torch
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Using device: {device}")
@@ -22,12 +23,12 @@ class StoryGenerator:
         # Create model instance with same parameters as training
         # ! # Must match training exactly
         self.model = RNNLanguageModel(
-            embed_dim=512, 
-            hidden_dim=768,  
+            embed_dim=512,
+            hidden_dim=768,
             vocab_size=self.tokenizer.vocab_size,
-            num_head=6,  
-            key_dim=128,  
-            value_dim=128,  
+            num_head=6,
+            key_dim=128,
+            value_dim=128,
         )
 
         # Load the saved state dictionary
@@ -45,13 +46,17 @@ class StoryGenerator:
             )
             input_ids = input_ids.to(next(self.model.parameters()).device)
 
+            import torch
+
             with torch.no_grad():
                 output_tokens = self.model.generate(
                     input_ids, max_tokens=max_tokens, temperature=temperature
                 )
 
-            generated_text = self.tokenizer.decode(output_tokens, skip_special_tokens=True)
-            
+            generated_text = self.tokenizer.decode(
+                output_tokens, skip_special_tokens=True
+            )
+
             # Now stream it character by character or word by word for UI effect
             words = generated_text.split()
             for i, word in enumerate(words):
@@ -59,8 +64,8 @@ class StoryGenerator:
                     yield word
                 else:
                     yield " " + word  # Proper spacing
-                
-                await asyncio.sleep(0.05) 
+
+                await asyncio.sleep(0.05)
 
         except Exception as e:
             print(f"❌ Generation error: {e}")
