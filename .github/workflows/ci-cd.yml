@@ -73,7 +73,7 @@ jobs:
     needs: lint
     strategy:
       matrix:
-        target: [test, production]
+        target: [production]
     
     steps:
       - name: Checkout code
