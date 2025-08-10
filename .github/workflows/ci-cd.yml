@@ -9,6 +9,7 @@ on:
 # Add permissions for security scanning
 permissions:
   contents: read
+  packages: write 
   security-events: write
   actions: read
 
