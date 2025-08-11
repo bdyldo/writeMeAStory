@@ -10,8 +10,12 @@ import pytest
 import asyncio
 import time
 import sys
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+
+# Set Modal endpoint URL for testing (HTTP mode)
+os.environ["MODAL_ENDPOINT_URL"] = "https://bdyldo--story-generator-generate-story-endpoint.modal.run"
 
 # Fix imports for both local and Docker environments
 try:
@@ -29,6 +33,7 @@ class TestMLValidation:
     async def test_api_contract_validation(self):
         """Test 1: API Contract - Modal returns expected format"""
         generator = ModalStoryGenerator()
+        # Will use HTTP mode since MODAL_ENDPOINT_URL is set globally
 
         # Mock Modal response with expected contract structure
         mock_response = {
