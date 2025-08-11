@@ -59,6 +59,3 @@ logs/
 tmp/
 temp/
 .tmp/
-
-client/**
-!client/dist/**

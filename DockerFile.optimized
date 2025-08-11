@@ -12,8 +12,8 @@ WORKDIR /app/client
 # Copy package files first for better Docker layer caching
 COPY client/package*.json ./
 
-# Install dependencies
-RUN npm ci 
+# Install dependencies 
+RUN npm install 
 
 # Copy source code and build
 COPY client/ ./
