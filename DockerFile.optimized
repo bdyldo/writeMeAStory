@@ -1,9 +1,29 @@
 # Optimized Docker build for Story Generator
-# Removes PyTorch/transformers dependencies and frontend build process
-# Reduces image size from ~4GB to ~500MB
+# Removes PyTorch/transformers dependencies but builds frontend in Docker
+# Reduces image size from ~4GB to ~600MB (due to frontend build)
 
 # =============================================================================
-# Stage 1: Python Dependencies (Optimized)
+# Stage 1: Frontend Build
+# =============================================================================
+FROM node:20-alpine AS frontend-build
+
+WORKDIR /app/client
+
+# Copy package files first for better Docker layer caching
+COPY client/package*.json ./
+
+# Install dependencies
+RUN npm ci 
+
+# Copy source code and build
+COPY client/ ./
+COPY common/ ../common/
+
+# Build the frontend
+RUN npm run build
+
+# =============================================================================
+# Stage 2: Python Dependencies (Optimized)
 # =============================================================================
 FROM python:3.12-slim AS python-deps
 
@@ -121,8 +141,8 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 # Copy application code
 COPY server/ ./server/
-# Copy pre-built frontend dist folder (no build required)
-COPY client/dist ./client/dist
+# Copy built frontend from frontend-build stage
+COPY --from=frontend-build /app/client/dist ./client/dist
 COPY common/ ./common/
 
 # Create empty model directory (not needed for Modal-based inference)
