@@ -24,29 +24,6 @@ class ModalStoryGenerator:
             print(f"✅ Using Modal HTTP endpoint: {self.modal_url}")
             self.use_client = False
 
-    async def _call_modal_client(
-        self, prompt: str, max_tokens: int, temperature: float
-    ):
-        """Call Modal using the Python client (Fall back for HTTP))"""
-        try:
-            # Import Modal client
-            app = modal.App.lookup(self.modal_app_name)
-            StoryGenerator = app["StoryGenerator"]
-
-            # Call the remote function
-            result = StoryGenerator().generate_tokens.remote(
-                prompt, max_tokens, temperature
-            )
-            return result
-
-        except Exception as e:
-            print(f"❌ Modal client error: {e}")
-            return {
-                "success": False,
-                "error": f"Modal client error: {str(e)}",
-                "generated_text": "",
-            }
-
     async def _call_modal_http(self, prompt: str, max_tokens: int, temperature: float):
         """Call Modal using HTTP endpoint"""
         try:
@@ -100,10 +77,7 @@ class ModalStoryGenerator:
             )
 
             # Call Modal service
-            if self.use_client:
-                result = await self._call_modal_client(prompt, max_tokens, temperature)
-            else:
-                result = await self._call_modal_http(prompt, max_tokens, temperature)
+            result = await self._call_modal_http(prompt, max_tokens, temperature)
 
             if not result["success"]:
                 yield f" [Error: {result['error']}]"

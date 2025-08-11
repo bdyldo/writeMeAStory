@@ -15,7 +15,9 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 # Set Modal endpoint URL for testing (HTTP mode)
-os.environ["MODAL_ENDPOINT_URL"] = "https://bdyldo--story-generator-generate-story-endpoint.modal.run"
+os.environ["MODAL_ENDPOINT_URL"] = (
+    "https://bdyldo--story-generator-generate-story-endpoint.modal.run"
+)
 
 # Fix imports for both local and Docker environments
 try:
