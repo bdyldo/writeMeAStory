@@ -250,7 +250,7 @@ jobs:
       - name: Verify deployment
         run: |
           # Health check on production
-          response=$(curl -s -o /dev/null -w "%{http_code}" https://your-app.onrender.com/api/health)
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://writemeastory.onrender.com/api/health)
           if [ "$response" = "200" ]; then
             echo "✅ Deployment successful!"
           else
