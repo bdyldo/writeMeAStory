@@ -9,7 +9,17 @@ Tests the 3 aspects:
 import pytest
 import asyncio
 import time
+import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
+
+# Fix imports for both local and Docker environments
+try:
+    from ..app.core.modal_story_generator import ModalStoryGenerator
+except ImportError:
+    # Fallback for Docker environment
+    sys.path.append(str(Path(__file__).parent.parent))
+    from app.core.modal_story_generator import ModalStoryGenerator
 
 
 class TestMLValidation:
@@ -18,8 +28,6 @@ class TestMLValidation:
     @pytest.mark.asyncio
     async def test_api_contract_validation(self):
         """Test 1: API Contract - Modal returns expected format"""
-        from ..app.core.modal_story_generator import ModalStoryGenerator
-
         generator = ModalStoryGenerator()
 
         # Mock Modal response with expected contract structure
@@ -48,8 +56,6 @@ class TestMLValidation:
     @pytest.mark.asyncio
     async def test_performance_benchmarking(self):
         """Test 2: Performance - Response time < 5 seconds"""
-        from ..app.core.modal_story_generator import ModalStoryGenerator
-
         generator = ModalStoryGenerator()
 
         # Mock fast response
@@ -78,8 +84,6 @@ class TestMLValidation:
     @pytest.mark.asyncio
     async def test_integration_end_to_end(self):
         """Test 3: Integration - Full system works together"""
-        from ..app.core.modal_story_generator import ModalStoryGenerator
-
         generator = ModalStoryGenerator()
 
         # Test both success and error scenarios
@@ -125,8 +129,6 @@ class TestMLValidation:
 
     def test_modal_configuration(self):
         """Test 4: Configuration - Modal setup is correct"""
-        from ..app.core.modal_story_generator import ModalStoryGenerator
-
         generator = ModalStoryGenerator()
 
         # Validate configuration
@@ -139,8 +141,6 @@ class TestMLValidation:
     @pytest.mark.asyncio
     async def test_concurrent_requests(self):
         """Test 5: Concurrency - Handle multiple requests"""
-        from ..app.core.modal_story_generator import ModalStoryGenerator
-
         generator = ModalStoryGenerator()
 
         mock_response = {
