@@ -30,9 +30,7 @@ class TestMLValidation:
             "generation_time": 1.5,
         }
 
-        with patch.object(
-            generator, "_call_modal_http", return_value=mock_response
-        ):
+        with patch.object(generator, "_call_modal_http", return_value=mock_response):
             words = []
             async for word in generator.generate_story_stream("Test prompt", 50, 0.7):
                 words.append(word)
