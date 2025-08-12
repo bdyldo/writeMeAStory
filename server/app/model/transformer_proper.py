@@ -301,17 +301,19 @@ device = (
 )
 
 class SentenceDataset:
-    """Dataset loader"""
+    """Dataset loader - fixed for proper batching"""
     def __init__(self, data_path):
         with open(data_path) as f:
             data = json.load(f)
-            data = [torch.tensor(seq) for seq in data]
+            # Ensure each sequence is properly shaped
+            data = [torch.tensor(seq, dtype=torch.long) for seq in data]
         self.data = data
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
+        # Return tensor as (seq_len,) - DataLoader will add batch dimension
         return self.data[idx]
 
 
@@ -340,6 +342,10 @@ def train_transformer(
         
         if idx >= num_sequences // batch_size:
             break
+        
+        # Ensure proper batch dimension
+        if sequence.dim() == 1:
+            sequence = sequence.unsqueeze(0)  # (seq_len,) -> (1, seq_len)
         
         # Forward pass
         logits = model(sequence)
@@ -401,6 +407,11 @@ def validate_transformer(model, dataset, loss_fn, num_batches=5):
             break
         
         sequence = sequence.to(device)
+        
+        # Ensure proper batch dimension
+        if sequence.dim() == 1:
+            sequence = sequence.unsqueeze(0)  # (seq_len,) -> (1, seq_len)
+            
         logits = model(sequence)
         
         targets = sequence[:, 1:]
