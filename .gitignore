@@ -12,3 +12,11 @@ __pycache__/
 .github/SETUP.md
 
 DockerFile
+server/scripts/model_performance_benchmark.py
+server/scripts/model_quality_benchmark.py
+server/model_benchmark_results.json
+server/model_quality_results.json
+server/scripts/model_quality_rouge_bert.py
+server/model_quality_rouge_bert.json
+server/scripts/model_metrics.py
+server/model_metrics.json
