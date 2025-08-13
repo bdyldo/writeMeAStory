@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Script to deploy your model to Modal and set up the GPU service.
+Script to deploy ML model to Modal and set up the GPU service.
 
 Usage:
 1. Install Modal: pip install modal
 2. Set up Modal token: modal token new
-3. Upload your model files: python deploy_modal.py upload
+3. Upload model files: python deploy_modal.py upload
 4. Deploy the service: python deploy_modal.py deploy
 """
 
@@ -37,7 +37,7 @@ def upload_model_files():
     print("🔄 Uploading model files to Modal...")
 
     # Check if model files exist
-    model_path = Path("app/model/model.pt")
+    model_path = Path("app/model/used_weight.pt")
     tokenizer_path = Path("app/model/tokenizer")
 
     if not model_path.exists():
@@ -50,9 +50,9 @@ def upload_model_files():
 
     # Use Modal volume copy commands directly with --force to overwrite
     commands = [
-        f"modal volume put --force story-model {model_path} model.pt",
+        f"modal volume put --force story-model {model_path} used_weight.pt",
         f"modal volume put --force story-model {tokenizer_path} tokenizer",
-        f"modal volume put --force story-model app/model/transformer.py app/model/transformer.py",
+        f"modal volume put --force story-model app/model/transformer_v2.py app/model/transformer_v2.py", 
         f"modal volume put --force story-model app/model/__init__.py app/model/__init__.py",
         f"modal volume put --force story-model app/__init__.py app/__init__.py",
         f"modal volume put --force story-model app/schemas app/schemas",
@@ -92,7 +92,6 @@ def get_modal_url():
                 for part in parts:
                     if part.startswith("https://"):
                         print(f"✅ Modal endpoint URL: {part}")
-                        print(f"\n📋 Add this to your environment variables:")
                         print(f"export MODAL_ENDPOINT_URL={part}")
                         print(f"export USE_MODAL=true")
                         return part
@@ -139,7 +138,7 @@ def main():
         url = get_modal_url()
         if url:
             print(
-                "\n🎉 Ready to use Modal! Set the environment variables and restart your server."
+                "\n🎉 Ready to use Modal! Set the environment variables and restart server."
             )
         else:
             print("\n❌ Could not get URL. Check 'modal app list' manually.")

@@ -1,4 +1,13 @@
-# Current val loss: 1.610219
+# Model 2
+# Parameters weights: 114,981,376
+# Parameters: --d_model 768 --num_heads 12 --num_layers 16 --d_ff 3072
+# Current val loss:
+# final5.pt: 1.410219
+# final6.pt: 1.39
+# final7.pt: 1.392
+# final8.pt: 1.373
+# final9.pt: 1.372
+# used_weight.pt: 1.373
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -533,7 +542,7 @@ if __name__ == "__main__":
 
     # Training
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=1e-5)
+    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=1e-4)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.7, patience=3)
 
     start = time.time()

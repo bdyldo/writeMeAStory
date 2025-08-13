@@ -44,24 +44,24 @@ class StoryGenerator:
             for file in files:
                 print(os.path.join(root, file))
 
-        # Load transformer from the correct path
-        transformer_path = "/model/app/model/transformer.py"
+        # Load transformer_v2 from the correct path
+        transformer_path = "/model/app/model/transformer_v2.py"
 
         if not os.path.exists(transformer_path):
             raise FileNotFoundError(
-                f"Could not find transformer.py at {transformer_path}"
+                f"Could not find transformer_v2.py at {transformer_path}"
             )
 
-        print(f"Loading transformer from: {transformer_path}")
+        print(f"Loading transformer_v2 from: {transformer_path}")
 
-        spec = importlib.util.spec_from_file_location("transformer", transformer_path)
+        spec = importlib.util.spec_from_file_location("transformer_v2", transformer_path)
         transformer_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(transformer_module)
-        RNNLanguageModel = transformer_module.RNNLanguageModel
+        ProperTransformer = transformer_module.ProperTransformer
 
         from transformers import AutoTokenizer
 
-        model_path = Path("/model/model.pt")
+        model_path = Path("/model/used_weight.pt")  
         tokenizer_path = Path("/model/tokenizer")
 
         print(f"Loading model from: {model_path}")
@@ -70,14 +70,14 @@ class StoryGenerator:
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_path))
 
-        # Create model with same parameters as training
-        self.model = RNNLanguageModel(
-            embed_dim=512,
-            hidden_dim=768,
+        # Create model with same parameters as training (from transformer_v2.py)
+        self.model = ProperTransformer(
             vocab_size=self.tokenizer.vocab_size,
-            num_head=6,
-            key_dim=128,
-            value_dim=128,
+            d_model=768,
+            num_heads=12,
+            num_layers=16,
+            d_ff=3072,
+            dropout=0.1
         )
 
         # Load model weights
