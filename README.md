@@ -12,7 +12,6 @@
 - 💾 **Download Stories** - Save generated stories as text files
 - 🔄 **Auto-reconnection** - Robust WebSocket connection with fallback to HTTP
 - 📱 **Responsive Design** - Works beautifully on desktop and mobile
-- 🎯 **TypeScript** - Fully typed for better development experience
 
 ## 🏗️ Architecture
 
@@ -228,6 +227,7 @@ npm install
 # Check TypeScript errors
 npm run type-check
 ```
+
 
 
 
