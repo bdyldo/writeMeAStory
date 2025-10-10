@@ -3,17 +3,17 @@
 > A real-time AI story generator with streaming text generation and beautiful UI
 > Deployed on Render: https://writemeastory.onrender.com
 
-## ✨ Features
+## Features
 
-- 🎨 **Beautiful UI** - Modern gradient design with smooth animations
-- ⚡ **Real-time Streaming** - Watch stories generate word-by-word using Socket.IO
-- 🎛️ **Customizable Settings** - Adjust max tokens, temperature, and streaming options
-- 📝 **Example Prompts** - Pre-built story starters to spark creativity
-- 💾 **Download Stories** - Save generated stories as text files
-- 🔄 **Auto-reconnection** - Robust WebSocket connection with fallback to HTTP
-- 📱 **Responsive Design** - Works beautifully on desktop and mobile
+- **Beautiful UI** - Modern gradient design with smooth animations
+- **Real-time Streaming** - Watch stories generate word-by-word using Socket.IO
+- **Customizable Settings** - Adjust max tokens, temperature, and streaming options
+- **Example Prompts** - Pre-built story starters to spark creativity
+- **Download Stories** - Save generated stories as text files
+- **Auto-reconnection** - Robust WebSocket connection with fallback to HTTP
+- **Responsive Design** - Works beautifully on desktop and mobile
 
-## 🏗️ Architecture
+## Architecture
 
 ### Frontend Stack
 - **React 18** with TypeScript
@@ -61,7 +61,7 @@ writeMeAStory/
 └── README.md
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - **Node.js** 16+ and npm
@@ -81,7 +81,7 @@ poetry install
 poetry run uvicorn main:app --reload
 ```
 
-## 📦 Installation
+## Installation
 
 ### 1. Clone the Repository
 ```bash
@@ -100,7 +100,7 @@ npm install
 cd backend
 poetry install
 ```
-## 🎮 Usage
+## Usage
 
 ### Basic Story Generation
 1. Enter a story prompt in the text area
@@ -114,7 +114,7 @@ poetry install
 - **Download**: Save completed stories as `.txt` files
 - **Connection Status**: Monitor real-time connection status
 
-## 🔧 Configuration
+## Configuration
 
 ### Frontend Settings
 ```typescript
@@ -139,7 +139,7 @@ max_tokens_limit = 500
 temperature_range = (0.0, 1.0)
 ```
 
-## 🌐 API Reference
+## API Reference
 
 ### Socket.IO Events
 
@@ -171,7 +171,7 @@ GET  /                    # Health check
 POST /api/generate        # HTTP fallback for story generation
 ```
 
-## 🛠️ Development
+## Development
 
 ### Running in Development Mode
 ```bash
@@ -207,7 +207,7 @@ black .
 flake8 .
 ```
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -227,6 +227,7 @@ npm install
 # Check TypeScript errors
 npm run type-check
 ```
+
 
 
 
