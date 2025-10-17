@@ -1,7 +1,6 @@
 # 📚 WriteMeAStory
 
-> A real-time AI story generator with streaming text generation and beautiful UI
-> Deployed on Render: https://writemeastory.onrender.com
+> A real-time AI story generator with streaming text generation
 
 ## Features
 
@@ -227,6 +226,7 @@ npm install
 # Check TypeScript errors
 npm run type-check
 ```
+
 
 
 
